@@ -2743,6 +2743,10 @@ public:
     return AddrSpaceMapMangling || isTargetAddressSpace(AS);
   }
 
+  // For two canonically equal types, return a type which has
+  // the common sugar between them.
+  QualType getCommonSugar(QualType X, QualType Y);
+
 private:
   // Helper for integer ordering
   unsigned getIntegerRank(const Type *T) const;

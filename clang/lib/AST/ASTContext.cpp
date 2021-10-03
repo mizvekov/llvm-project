@@ -3168,9 +3168,9 @@ bool ASTContext::hasSameFunctionTypeIgnoringExceptionSpec(QualType T,
 QualType ASTContext::getFunctionTypeWithoutPtrSizes(QualType T) {
   if (const auto *Proto = T->getAs<FunctionProtoType>()) {
     QualType RetTy = removePtrSizeAddrSpace(Proto->getReturnType());
-    SmallVector<QualType, 16> Args(Proto->param_types());
+    SmallVector<QualType, 16> Args(Proto->param_types().size());
     for (unsigned i = 0, n = Args.size(); i != n; ++i)
-      Args[i] = removePtrSizeAddrSpace(Args[i]);
+      Args[i] = removePtrSizeAddrSpace(Proto->param_types()[i]);
     return getFunctionType(RetTy, Args, Proto->getExtProtoInfo());
   }
 
@@ -11538,6 +11538,427 @@ unsigned ASTContext::getTargetAddressSpace(LangAS AS) const {
     return toTargetAddressSpace(AS);
   else
     return (*AddrSpaceMap)[(unsigned)AS];
+}
+
+static auto getCommonTypeArray(ASTContext &Ctx, ArrayRef<QualType> Xs,
+                               ArrayRef<QualType> Ys,
+                               bool Unqualified = false) {
+  assert(Xs.size() == Ys.size());
+  SmallVector<QualType, 8> Rs(Xs.size());
+  for (size_t I = 0; I < Rs.size(); ++I) {
+    QualType X = Xs[I], Y = Ys[I];
+    if (Unqualified && !Ctx.hasSameType(X, Y)) {
+      assert(Ctx.hasSameUnqualifiedType(X, Y));
+      auto XQuals = X.getCVRQualifiers(), YQuals = Y.getCVRQualifiers();
+      X.addFastQualifiers(YQuals & ~XQuals);
+      Y.addFastQualifiers(XQuals & ~YQuals);
+    }
+    Rs[I] = Ctx.getCommonSugar(X, Y);
+  }
+  return Rs;
+}
+
+template <class T>
+static SourceLocation getCommonAttrLoc(const T *X, const T *Y) {
+  return X->getAttributeLoc() == Y->getAttributeLoc() ? X->getAttributeLoc()
+                                                      : SourceLocation();
+}
+
+static TemplateArgument getCommonTemplateArgument(ASTContext &Ctx,
+                                                  const TemplateArgument &X,
+                                                  const TemplateArgument &Y) {
+  assert(X.getKind() == Y.getKind());
+  switch (X.getKind()) {
+  case TemplateArgument::ArgKind::Type:
+    return TemplateArgument(Ctx.getCommonSugar(X.getAsType(), Y.getAsType()));
+  case TemplateArgument::ArgKind::NullPtr:
+    return TemplateArgument(
+        Ctx.getCommonSugar(X.getNullPtrType(), Y.getNullPtrType()), true);
+  default:
+    return X;
+  }
+  llvm_unreachable("");
+}
+
+static auto getCommonTemplateArguments(ASTContext &Ctx,
+                                       ArrayRef<TemplateArgument> X,
+                                       ArrayRef<TemplateArgument> Y) {
+  SmallVector<TemplateArgument, 8> R(X.size());
+  for (size_t I = 0; I < R.size(); ++I)
+    R[I] = getCommonTemplateArgument(Ctx, X[I], Y[I]);
+  return R;
+}
+
+template <class T>
+static ElaboratedTypeKeyword getCommonTypeKeyword(const T *X, const T *Y) {
+  return X->getKeyword() == Y->getKeyword() ? X->getKeyword()
+                                            : ElaboratedTypeKeyword::ETK_None;
+}
+
+template <class T>
+static NestedNameSpecifier *getCommonNNS(ASTContext &Ctx, const T *X,
+                                         const T *Y) {
+  return X->getQualifier() == Y->getQualifier()
+             ? X->getQualifier()
+             : Ctx.getCanonicalNestedNameSpecifier(X->getQualifier());
+}
+
+template <class T>
+static QualType getCommonElementType(ASTContext &Ctx, const T *X, const T *Y) {
+  return Ctx.getCommonSugar(X->getElementType(), Y->getElementType());
+}
+
+template <class T>
+static QualType getCommonPointeeType(ASTContext &Ctx, const T *X, const T *Y) {
+  return Ctx.getCommonSugar(X->getPointeeType(), Y->getPointeeType());
+}
+
+template <class T> static auto *getCommonSizeExpr(T *X, T *Y) {
+  assert(X->getSizeExpr() == Y->getSizeExpr());
+  return X->getSizeExpr();
+}
+
+static auto getCommonSizeModifier(const ArrayType *X, const ArrayType *Y) {
+  assert(X->getSizeModifier() == Y->getSizeModifier());
+  return X->getSizeModifier();
+}
+
+static auto getCommonIndexTypeCVRQualifiers(const ArrayType *X,
+                                            const ArrayType *Y) {
+  assert(X->getIndexTypeCVRQualifiers() == Y->getIndexTypeCVRQualifiers());
+  return X->getIndexTypeCVRQualifiers();
+}
+
+static QualType getCommonCanonicalType(ASTContext &Ctx, const Type *X,
+                                       const Type *Y) {
+  Type::TypeClass TC = X->getTypeClass();
+  assert(TC == Y->getTypeClass());
+  switch (TC) {
+#define UNEXPECTED_TYPE(Class, Kind)                                           \
+  case Type::Class:                                                            \
+    llvm_unreachable("Unexpected " Kind ": " #Class);
+
+#define NON_CANONICAL_TYPE(Class, Base) UNEXPECTED_TYPE(Class, "non-canonical")
+#define TYPE(Class, Base)
+#include "clang/AST/TypeNodes.inc"
+
+#define SUGAR_FREE_TYPE(Class) UNEXPECTED_TYPE(Class, "sugar-free")
+    SUGAR_FREE_TYPE(Builtin)
+    SUGAR_FREE_TYPE(Decltype)
+    SUGAR_FREE_TYPE(DeducedTemplateSpecialization)
+    SUGAR_FREE_TYPE(DependentExtInt)
+    SUGAR_FREE_TYPE(Enum)
+    SUGAR_FREE_TYPE(ExtInt)
+    SUGAR_FREE_TYPE(ObjCInterface)
+    SUGAR_FREE_TYPE(Record)
+    SUGAR_FREE_TYPE(SubstTemplateTypeParmPack)
+    SUGAR_FREE_TYPE(TemplateTypeParm)
+    SUGAR_FREE_TYPE(UnresolvedUsing)
+#undef SUGAR_FREE_TYPE
+#define NON_UNIQUE_TYPE(Class) UNEXPECTED_TYPE(Class, "non-unique")
+    NON_UNIQUE_TYPE(TypeOfExpr)
+    NON_UNIQUE_TYPE(VariableArray)
+#undef NON_UNIQUE_TYPE
+
+    UNEXPECTED_TYPE(TypeOf, "sugar")
+
+#undef UNEXPECTED_TYPE
+
+  case Type::Auto: {
+    const auto *AX = cast<AutoType>(X), *AY = cast<AutoType>(Y);
+    assert(AX->getDeducedType().isNull());
+    assert(AY->getDeducedType().isNull());
+    assert(AX->getKeyword() == AY->getKeyword());
+    assert(AX->isInstantiationDependentType() ==
+           AY->isInstantiationDependentType());
+    assert(AX->getTypeConstraintConcept() == AY->getTypeConstraintConcept());
+    auto As = getCommonTemplateArguments(Ctx, AX->getTypeConstraintArguments(),
+                                         AY->getTypeConstraintArguments());
+    return Ctx.getAutoType(QualType(), AX->getKeyword(),
+                           AX->isInstantiationDependentType(),
+                           AX->containsUnexpandedParameterPack(),
+                           AX->getTypeConstraintConcept(), As);
+  }
+  case Type::IncompleteArray: {
+    const auto *AX = cast<IncompleteArrayType>(X),
+               *AY = cast<IncompleteArrayType>(Y);
+    return Ctx.getIncompleteArrayType(getCommonElementType(Ctx, AX, AY),
+                                      getCommonSizeModifier(AX, AY),
+                                      getCommonIndexTypeCVRQualifiers(AX, AY));
+  }
+  case Type::DependentSizedArray: {
+    const auto *AX = cast<DependentSizedArrayType>(X),
+               *AY = cast<DependentSizedArrayType>(Y);
+    return Ctx.getDependentSizedArrayType(
+        getCommonElementType(Ctx, AX, AY), getCommonSizeExpr(AX, AY),
+        getCommonSizeModifier(AX, AY), getCommonIndexTypeCVRQualifiers(AX, AY),
+        AX->getBracketsRange() == AY->getBracketsRange()
+            ? AX->getBracketsRange()
+            : SourceRange());
+  }
+  case Type::ConstantArray: {
+    const auto *AX = cast<ConstantArrayType>(X),
+               *AY = cast<ConstantArrayType>(Y);
+    assert(AX->getSize() == AY->getSize());
+    return Ctx.getConstantArrayType(getCommonElementType(Ctx, AX, AY),
+                                    AX->getSize(), getCommonSizeExpr(AX, AY),
+                                    getCommonSizeModifier(AX, AY),
+                                    getCommonIndexTypeCVRQualifiers(AX, AY));
+  }
+  case Type::Atomic: {
+    const auto *AX = cast<AtomicType>(X), *AY = cast<AtomicType>(Y);
+    return Ctx.getAtomicType(
+        Ctx.getCommonSugar(AX->getValueType(), AY->getValueType()));
+  }
+  case Type::Complex: {
+    const auto *CX = cast<ComplexType>(X), *CY = cast<ComplexType>(Y);
+    return Ctx.getComplexType(getCommonElementType(Ctx, CX, CY));
+  }
+  case Type::Pointer: {
+    const auto *PX = cast<PointerType>(X), *PY = cast<PointerType>(Y);
+    return Ctx.getPointerType(getCommonPointeeType(Ctx, PX, PY));
+  }
+  case Type::BlockPointer: {
+    const auto *PX = cast<BlockPointerType>(X), *PY = cast<BlockPointerType>(Y);
+    return Ctx.getBlockPointerType(getCommonPointeeType(Ctx, PX, PY));
+  }
+  case Type::ObjCObjectPointer: {
+    const auto *PX = cast<ObjCObjectPointerType>(X),
+               *PY = cast<ObjCObjectPointerType>(Y);
+    return Ctx.getObjCObjectPointerType(getCommonPointeeType(Ctx, PX, PY));
+  }
+  case Type::MemberPointer: {
+    const auto *PX = cast<MemberPointerType>(X),
+               *PY = cast<MemberPointerType>(Y);
+    return Ctx.getMemberPointerType(
+        getCommonPointeeType(Ctx, PX, PY),
+        Ctx.getCommonSugar(QualType(PX->getClass(), 0),
+                           QualType(PY->getClass(), 0))
+            .getTypePtr());
+  }
+  case Type::LValueReference: {
+    const auto *PX = cast<LValueReferenceType>(X),
+               *PY = cast<LValueReferenceType>(Y);
+    return Ctx.getLValueReferenceType(getCommonPointeeType(Ctx, PX, PY),
+                                      PX->isSpelledAsLValue() &&
+                                          PY->isSpelledAsLValue());
+  }
+  case Type::RValueReference: {
+    const auto *PX = cast<RValueReferenceType>(X),
+               *PY = cast<RValueReferenceType>(Y);
+    return Ctx.getRValueReferenceType(getCommonPointeeType(Ctx, PX, PY));
+  }
+  case Type::DependentAddressSpace: {
+    const auto *PX = cast<DependentAddressSpaceType>(X),
+               *PY = cast<DependentAddressSpaceType>(Y);
+    return Ctx.getDependentAddressSpaceType(getCommonPointeeType(Ctx, PX, PY),
+                                            PX->getAddrSpaceExpr(),
+                                            getCommonAttrLoc(PX, PY));
+  }
+  case Type::FunctionNoProto: {
+    const auto *FX = cast<FunctionNoProtoType>(X),
+               *FY = cast<FunctionNoProtoType>(Y);
+    assert(FX->getExtInfo() == FY->getExtInfo());
+    return Ctx.getFunctionNoProtoType(
+        Ctx.getCommonSugar(FX->getReturnType(), FY->getReturnType()),
+        FX->getExtInfo());
+  }
+  case Type::FunctionProto: {
+    const auto *FX = cast<FunctionProtoType>(X),
+               *FY = cast<FunctionProtoType>(Y);
+    FunctionProtoType::ExtProtoInfo EPIX = FX->getExtProtoInfo(),
+                                    EPIY = FY->getExtProtoInfo();
+    assert(EPIX.ExceptionSpec.Type == EPIY.ExceptionSpec.Type);
+    assert(EPIX.ExceptionSpec.NoexceptExpr == EPIY.ExceptionSpec.NoexceptExpr);
+    assert(EPIX.ExceptionSpec.SourceDecl == EPIY.ExceptionSpec.SourceDecl);
+    assert(EPIX.ExceptionSpec.SourceTemplate ==
+           EPIY.ExceptionSpec.SourceTemplate);
+    assert(EPIX.ExtInfo == EPIY.ExtInfo);
+    assert(EPIX.ExtParameterInfos == EPIY.ExtParameterInfos);
+    assert(EPIX.RefQualifier == EPIY.RefQualifier);
+    assert(EPIX.TypeQuals == EPIY.TypeQuals);
+    assert(EPIX.Variadic == EPIY.Variadic);
+
+    if (EPIX.EllipsisLoc != EPIY.EllipsisLoc)
+      EPIX.EllipsisLoc = SourceLocation();
+    EPIX.HasTrailingReturn = EPIX.HasTrailingReturn && EPIY.HasTrailingReturn;
+
+    QualType R = Ctx.getCommonSugar(FX->getReturnType(), FY->getReturnType());
+    auto P = getCommonTypeArray(Ctx, FX->param_types(), FY->param_types(),
+                                /*Unqualified=*/true);
+
+    if (EPIX.ExceptionSpec.Exceptions.size() ==
+        EPIY.ExceptionSpec.Exceptions.size()) {
+      auto E = getCommonTypeArray(Ctx, EPIX.ExceptionSpec.Exceptions,
+                                  EPIY.ExceptionSpec.Exceptions);
+      EPIX.ExceptionSpec.Exceptions = E;
+      return Ctx.getFunctionType(R, P, EPIX);
+    } else {
+      if (EPIY.ExceptionSpec.Exceptions.size() >
+          EPIX.ExceptionSpec.Exceptions.size())
+        EPIX.ExceptionSpec.Exceptions = EPIY.ExceptionSpec.Exceptions;
+      return Ctx.getFunctionType(R, P, EPIX);
+    }
+  }
+  case Type::ObjCObject: {
+    const auto *OX = cast<ObjCObjectType>(X), *OY = cast<ObjCObjectType>(Y);
+    assert(llvm::equal(OX->getProtocols(), OY->getProtocols()));
+    auto TAs = getCommonTypeArray(Ctx, OX->getTypeArgsAsWritten(),
+                                  OY->getTypeArgsAsWritten());
+    return Ctx.getObjCObjectType(
+        Ctx.getCommonSugar(OX->getBaseType(), OY->getBaseType()), TAs,
+        OX->getProtocols(),
+        OX->isKindOfTypeAsWritten() && OY->isKindOfTypeAsWritten());
+  }
+  case Type::ConstantMatrix: {
+    const auto *MX = cast<ConstantMatrixType>(X),
+               *MY = cast<ConstantMatrixType>(Y);
+    assert(MX->getNumRows() == MY->getNumRows());
+    assert(MX->getNumColumns() == MY->getNumColumns());
+    return Ctx.getConstantMatrixType(getCommonElementType(Ctx, MX, MY),
+                                     MX->getNumRows(), MX->getNumColumns());
+  }
+  case Type::DependentSizedMatrix: {
+    const auto *MX = cast<DependentSizedMatrixType>(X),
+               *MY = cast<DependentSizedMatrixType>(Y);
+    assert(MX->getRowExpr() == MY->getRowExpr());
+    assert(MX->getColumnExpr() == MY->getColumnExpr());
+    return Ctx.getDependentSizedMatrixType(
+        getCommonElementType(Ctx, MX, MY), MX->getRowExpr(),
+        MX->getColumnExpr(), getCommonAttrLoc(MX, MY));
+  }
+  case Type::Vector: {
+    const auto *VX = cast<VectorType>(X), *VY = cast<VectorType>(Y);
+    assert(VX->getNumElements() == VY->getNumElements());
+    assert(VX->getVectorKind() == VY->getVectorKind());
+    return Ctx.getVectorType(getCommonElementType(Ctx, VX, VY),
+                             VX->getNumElements(), VX->getVectorKind());
+  }
+  case Type::ExtVector: {
+    const auto *VX = cast<ExtVectorType>(X), *VY = cast<ExtVectorType>(Y);
+    assert(VX->getNumElements() == VY->getNumElements());
+    return Ctx.getExtVectorType(getCommonElementType(Ctx, VX, VY),
+                                VX->getNumElements());
+  }
+  case Type::DependentSizedExtVector: {
+    const auto *VX = cast<DependentSizedExtVectorType>(X),
+               *VY = cast<DependentSizedExtVectorType>(Y);
+    return Ctx.getDependentSizedExtVectorType(getCommonElementType(Ctx, VX, VY),
+                                              getCommonSizeExpr(VX, VY),
+                                              getCommonAttrLoc(VX, VY));
+  }
+  case Type::DependentVector: {
+    const auto *VX = cast<DependentVectorType>(X),
+               *VY = cast<DependentVectorType>(Y);
+    assert(VX->getVectorKind() == VY->getVectorKind());
+    return Ctx.getDependentVectorType(
+        getCommonElementType(Ctx, VX, VY), getCommonSizeExpr(VX, VY),
+        getCommonAttrLoc(VX, VY), VX->getVectorKind());
+  }
+  case Type::InjectedClassName: {
+    const auto *IX = cast<InjectedClassNameType>(X),
+               *IY = cast<InjectedClassNameType>(Y);
+    assert(IX->getDecl() == IY->getDecl());
+    return Ctx.getInjectedClassNameType(
+        IX->getDecl(), Ctx.getCommonSugar(IX->getInjectedSpecializationType(),
+                                          IY->getInjectedSpecializationType()));
+  }
+  case Type::TemplateSpecialization: {
+    const auto *TX = cast<TemplateSpecializationType>(X),
+               *TY = cast<TemplateSpecializationType>(Y);
+    assert(TX->getTemplateName().getAsVoidPointer() ==
+           TY->getTemplateName().getAsVoidPointer());
+    auto As = getCommonTemplateArguments(Ctx, TX->template_arguments(),
+                                         TY->template_arguments());
+    return Ctx.getTemplateSpecializationType(TX->getTemplateName(), As,
+                                             QualType(TX, 0));
+  }
+  case Type::DependentName: {
+    const auto *NX = cast<DependentNameType>(X),
+               *NY = cast<DependentNameType>(Y);
+    assert(NX->getIdentifier() == NY->getIdentifier());
+    return Ctx.getDependentNameType(
+        getCommonTypeKeyword(NX, NY), getCommonNNS(Ctx, NX, NY),
+        NX->getIdentifier(), NX->getCanonicalTypeInternal());
+  }
+  case Type::DependentTemplateSpecialization: {
+    const auto *TX = cast<DependentTemplateSpecializationType>(X),
+               *TY = cast<DependentTemplateSpecializationType>(Y);
+    assert(TX->getIdentifier() == TY->getIdentifier());
+    auto As = getCommonTemplateArguments(Ctx, TX->template_arguments(),
+                                         TY->template_arguments());
+    return Ctx.getDependentTemplateSpecializationType(
+        getCommonTypeKeyword(TX, TY), getCommonNNS(Ctx, TX, TY),
+        TX->getIdentifier(), As);
+  }
+  case Type::UnaryTransform: {
+    const auto *TX = cast<UnaryTransformType>(X),
+               *TY = cast<UnaryTransformType>(Y);
+    assert(TX->getUTTKind() == TY->getUTTKind());
+    return Ctx.getUnaryTransformType(
+        Ctx.getCommonSugar(TX->getBaseType(), TY->getBaseType()),
+        Ctx.getCommonSugar(TX->getUnderlyingType(), TY->getUnderlyingType()),
+        TX->getUTTKind());
+  }
+  case Type::PackExpansion: {
+    const auto *PX = cast<PackExpansionType>(X),
+               *PY = cast<PackExpansionType>(Y);
+    return Ctx.getPackExpansionType(
+        Ctx.getCommonSugar(PX->getPattern(), PY->getPattern()),
+        PX->getNumExpansions(), false);
+  }
+  case Type::Pipe: {
+    const auto *PX = cast<PipeType>(X), *PY = cast<PipeType>(Y);
+    assert(PX->isReadOnly() == PY->isReadOnly());
+    auto MP = PX->isReadOnly() ? &ASTContext::getReadPipeType
+                               : &ASTContext::getWritePipeType;
+    return (Ctx.*MP)(getCommonElementType(Ctx, PX, PY));
+  }
+  }
+  llvm_unreachable("Unknown Type Class");
+}
+
+static auto unwrapSugar(QualType &T) {
+  SmallVector<QualType, 8> R;
+  while (true) {
+    QualType NT = T->getLocallyUnqualifiedSingleStepDesugaredType();
+    NT.addFastQualifiers(T.getLocalFastQualifiers());
+    if (T == NT)
+      break;
+    R.push_back(T);
+    T = NT;
+  }
+  return R;
+}
+
+QualType ASTContext::getCommonSugar(QualType X, QualType Y) {
+  assert(hasSameType(X, Y));
+  if (X == Y || X.isCanonical())
+    return X;
+  if (Y.isCanonical())
+    return Y;
+
+  QualType Orig = X;
+  (void)Orig;
+  {
+    auto Xs = ::unwrapSugar(X), Ys = ::unwrapSugar(Y);
+    if (X == Y) {
+      while (!Xs.empty() && !Ys.empty() && Xs.back() == Ys.back()) {
+        X = Xs.pop_back_val();
+        Y = Ys.pop_back_val();
+      }
+      assert(hasSameType(X, Orig));
+      return X;
+    }
+  }
+
+  auto Quals = X.getLocalFastQualifiers();
+  assert(Quals == Y.getLocalFastQualifiers());
+
+  X = ::getCommonCanonicalType(*this, X.getTypePtr(), Y.getTypePtr());
+  X.addFastQualifiers(Quals);
+  assert(hasSameType(X, Orig));
+  return X;
 }
 
 QualType ASTContext::getCorrespondingSaturatedType(QualType Ty) const {

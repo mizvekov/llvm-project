@@ -2002,10 +2002,13 @@ Sema::BuildCXXNew(SourceRange Range, bool UseGlobal,
           << AllocType << TypeRange;
     Expr *Deduce = Inits[0];
     QualType DeducedType;
-    if (DeduceAutoType(AllocTypeInfo, Deduce, DeducedType) == DAR_Failed)
+    TemplateDeductionInfo Info(Deduce->getExprLoc());
+    TemplateDeductionResult Result =
+        DeduceAutoType(AllocTypeInfo->getTypeLoc(), Deduce, DeducedType, Info);
+    if (Result != TDK_Success && Result != TDK_AlreadyDiagnosed)
       return ExprError(Diag(StartLoc, diag::err_auto_new_deduction_failure)
-                       << AllocType << Deduce->getType()
-                       << TypeRange << Deduce->getSourceRange());
+                       << AllocType << Deduce->getType() << TypeRange
+                       << Deduce->getSourceRange());
     if (DeducedType.isNull())
       return ExprError();
     AllocType = DeducedType;
