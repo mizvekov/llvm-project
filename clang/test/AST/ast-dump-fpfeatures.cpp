@@ -140,4 +140,4 @@ float func_15(float x, float y) {
 // CHECK:         FunctionDecl {{.*}} func_14 'float (float, float)'
 // CHECK:           CompoundStmt
 // CHECK-NEXT:        ReturnStmt
-// CHECK-NEXT:          BinaryOperator {{.*}} 'float' '+' RoundingMode=towardzero
+// CHECK-NEXT:          BinaryOperator {{.*}} 'float':'float' '+' RoundingMode=towardzero
