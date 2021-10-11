@@ -2546,7 +2546,7 @@ SourceLocation CXXCtorInitializer::getSourceLocation() const {
     return getMemberLocation();
 
   if (const auto *TSInfo = Initializee.get<TypeSourceInfo *>())
-    return TSInfo->getTypeLoc().getLocalSourceRange().getBegin();
+    return TSInfo->getTypeLoc().getBeginLoc();
 
   return {};
 }

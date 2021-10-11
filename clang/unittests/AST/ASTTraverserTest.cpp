@@ -1171,9 +1171,9 @@ void decomposition()
 CXXRecordDecl 'Record'
 |-CXXRecordDecl 'Record'
 |-CXXConstructorDecl 'Record'
-| |-CXXCtorInitializer 'struct Simple'
+| |-CXXCtorInitializer 'Simple'
 | | `-CXXConstructExpr
-| |-CXXCtorInitializer 'struct Other'
+| |-CXXCtorInitializer 'Other'
 | | `-CXXConstructExpr
 | |-CXXCtorInitializer 'm_i'
 | | `-IntegerLiteral
@@ -1194,7 +1194,7 @@ CXXRecordDecl 'Record'
               R"cpp(
 CXXRecordDecl 'Record'
 |-CXXConstructorDecl 'Record'
-| |-CXXCtorInitializer 'struct Simple'
+| |-CXXCtorInitializer 'Simple'
 | | `-CXXConstructExpr
 | |-CXXCtorInitializer 'm_i'
 | | `-IntegerLiteral

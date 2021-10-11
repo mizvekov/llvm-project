@@ -71,7 +71,7 @@ TEST(GetDeducedType, KwAutoKwDecltypeExpansion) {
               template<typename T> class Foo {};
               ^auto v = Foo<X>();
           )cpp",
-          "Foo<class X>",
+          "Foo<X>",
       },
       {
           R"cpp( // auto on initializer list.
@@ -92,7 +92,7 @@ TEST(GetDeducedType, KwAutoKwDecltypeExpansion) {
               return Foo();
             }
           )cpp",
-          "struct Foo",
+          "Foo",
       },
       {
           R"cpp( // decltype in trailing return type
@@ -101,7 +101,7 @@ TEST(GetDeducedType, KwAutoKwDecltypeExpansion) {
               return Foo();
             }
           )cpp",
-          "struct Foo",
+          "Foo",
       },
       {
           R"cpp( // auto in function return type
@@ -110,7 +110,7 @@ TEST(GetDeducedType, KwAutoKwDecltypeExpansion) {
               return Foo();
             }
           )cpp",
-          "struct Foo",
+          "Foo",
       },
       {
           R"cpp( // auto& in function return type
@@ -120,7 +120,7 @@ TEST(GetDeducedType, KwAutoKwDecltypeExpansion) {
               return x;
             }
           )cpp",
-          "struct Foo",
+          "Foo",
       },
       {
           R"cpp( // auto* in function return type
@@ -130,7 +130,7 @@ TEST(GetDeducedType, KwAutoKwDecltypeExpansion) {
               return x;
             }
           )cpp",
-          "struct Foo",
+          "Foo",
       },
       {
           R"cpp( // const auto& in function return type
@@ -140,7 +140,7 @@ TEST(GetDeducedType, KwAutoKwDecltypeExpansion) {
               return x;
             }
           )cpp",
-          "struct Foo",
+          "Foo",
       },
       {
           R"cpp( // decltype(auto) in function return (value)
@@ -149,7 +149,7 @@ TEST(GetDeducedType, KwAutoKwDecltypeExpansion) {
               return Foo();
             }
           )cpp",
-          "struct Foo",
+          "Foo",
       },
       {
           R"cpp( // decltype(auto) in function return (ref)
@@ -159,7 +159,7 @@ TEST(GetDeducedType, KwAutoKwDecltypeExpansion) {
               return (x);
             }
           )cpp",
-          "struct Foo &",
+          "Foo &",
       },
       {
           R"cpp( // decltype(auto) in function return (const ref)
@@ -169,7 +169,7 @@ TEST(GetDeducedType, KwAutoKwDecltypeExpansion) {
               return (x);
             }
           )cpp",
-          "const struct Foo &",
+          "const Foo &",
       },
       {
           R"cpp( // auto on alias

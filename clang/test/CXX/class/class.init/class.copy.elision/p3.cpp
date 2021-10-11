@@ -11,7 +11,7 @@ struct A1 {
 };
 A1 test1() {
   A1 a;
-  return a; // expected-error {{call to deleted constructor of 'test_delete_function::A1'}}
+  return a; // expected-error {{call to deleted constructor of 'A1'}}
 }
 
 struct A2 {
@@ -34,7 +34,7 @@ struct B1 {
 };
 B1 test3() {
   C c;
-  return c; // expected-error {{conversion function from 'test_delete_function::C' to 'test_delete_function::B1' invokes a deleted function}}
+  return c; // expected-error {{conversion function from 'C' to 'B1' invokes a deleted function}}
 }
 
 struct B2 {
@@ -75,7 +75,7 @@ struct B1 {
   B1(B1 &&) = delete; // expected-note {{'B1' has been explicitly marked deleted here}}
 };
 B1 test3(B1 &&b) {
-  return b; // expected-error {{call to deleted constructor of 'test_implicitly_movable_rvalue_ref::B1'}}
+  return b; // expected-error {{call to deleted constructor of 'B1'}}
 }
 
 struct B2 {
@@ -102,7 +102,7 @@ void test1() {
   try {
     func();
   } catch (A1 a) {
-    throw a; // expected-error {{call to deleted constructor of 'test_throw_parameter::A1'}}
+    throw a; // expected-error {{call to deleted constructor of 'A1'}}
   }
 }
 
@@ -123,7 +123,7 @@ void test2() {
 void test3(A1 a) try {
   func();
 } catch (...) {
-  throw a; // expected-error {{call to deleted constructor of 'test_throw_parameter::A1'}}
+  throw a; // expected-error {{call to deleted constructor of 'A1'}}
 }
 } // namespace test_throw_parameter
 
@@ -158,7 +158,7 @@ struct B1 {
 };
 C test3() {
   B1 b;
-  return b; // expected-error {{conversion function from 'test_non_ctor_conversion::B1' to 'test_non_ctor_conversion::C' invokes a deleted function}}
+  return b; // expected-error {{conversion function from 'B1' to 'C' invokes a deleted function}}
 }
 
 struct B2 {
@@ -256,20 +256,20 @@ NeedValue test_3_1() {
   // not rvalue reference
   // same type
   B1 b;
-  return b; // cxx11_2b-error {{call to deleted constructor of 'test_ctor_param_rvalue_ref::B1'}}
+  return b; // cxx11_2b-error {{call to deleted constructor of 'B1'}}
 }
 class DerivedB1 : public B1 {};
 B1 test_3_2() {
   // rvalue reference
   // not same type
   DerivedB1 b;
-  return b; // expected-error {{call to deleted constructor of 'test_ctor_param_rvalue_ref::B1'}}
+  return b; // expected-error {{call to deleted constructor of 'B1'}}
 }
 NeedValue test_3_3() {
   // not rvalue reference
   // not same type
   DerivedB1 b;
-  return b; // cxx11_2b-error {{call to deleted constructor of 'test_ctor_param_rvalue_ref::B1'}}
+  return b; // cxx11_2b-error {{call to deleted constructor of 'B1'}}
 }
 
 struct B2 {

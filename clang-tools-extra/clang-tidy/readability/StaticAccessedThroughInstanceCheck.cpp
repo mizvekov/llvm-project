@@ -17,18 +17,13 @@ namespace clang {
 namespace tidy {
 namespace readability {
 
-static unsigned getNameSpecifierNestingLevel(const QualType &QType) {
-  if (const ElaboratedType *ElType = QType->getAs<ElaboratedType>()) {
-    const NestedNameSpecifier *NestedSpecifiers = ElType->getQualifier();
-    unsigned NameSpecifierNestingLevel = 1;
-    do {
-      NameSpecifierNestingLevel++;
-      NestedSpecifiers = NestedSpecifiers->getPrefix();
-    } while (NestedSpecifiers);
-
-    return NameSpecifierNestingLevel;
-  }
-  return 0;
+static unsigned getNameSpecifierNestingLevel(QualType T) {
+  unsigned NestingLevel = 0;
+  if (const auto *ET = T->getAs<ElaboratedType>())
+    for (const NestedNameSpecifier *NNS = ET->getQualifier(); NNS;
+         NNS = NNS->getPrefix())
+      ++NestingLevel;
+  return NestingLevel;
 }
 
 void StaticAccessedThroughInstanceCheck::storeOptions(

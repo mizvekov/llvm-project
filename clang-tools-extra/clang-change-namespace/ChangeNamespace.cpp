@@ -564,18 +564,7 @@ void ChangeNamespaceTool::run(
     TypeLoc Loc = *TLoc;
     while (Loc.getTypeLocClass() == TypeLoc::Qualified)
       Loc = Loc.getNextTypeLoc();
-    if (Loc.getTypeLocClass() == TypeLoc::Elaborated) {
-      NestedNameSpecifierLoc NestedNameSpecifier =
-          Loc.castAs<ElaboratedTypeLoc>().getQualifierLoc();
-      // This happens for friend declaration of a base class with injected class
-      // name.
-      if (!NestedNameSpecifier.getNestedNameSpecifier())
-        return;
-      const Type *SpecifierType =
-          NestedNameSpecifier.getNestedNameSpecifier()->getAsType();
-      if (SpecifierType && SpecifierType->isRecordType())
-        return;
-    }
+    // FIXME: avoid changing injected class names.
     fixTypeLoc(Result, startLocationForType(Loc), endLocationForType(Loc), Loc);
   } else if (const auto *VarRef =
                  Result.Nodes.getNodeAs<DeclRefExpr>("var_ref")) {

@@ -274,6 +274,44 @@ static ParsedType recoverFromTypeInKnownDependentBase(Sema &S,
   return S.CreateParsedType(T, Builder.getTypeSourceInfo(Context, T));
 }
 
+/// Build a ParsedType for a simple-type-specifier with a nested-name-specifier.
+static ParsedType buildNamedType(Sema &S, const CXXScopeSpec *SS, QualType T,
+                                 SourceLocation NameLoc,
+                                 bool WantNontrivialTypeSourceInfo = true) {
+  switch (T->getTypeClass()) {
+  case Type::DeducedTemplateSpecialization:
+  case Type::Enum:
+  case Type::InjectedClassName:
+  case Type::Record:
+  case Type::Typedef:
+  case Type::UnresolvedUsing:
+    break;
+  // These can never be qualified so an ElaboratedType node
+  // would carry no additional meaning.
+  case Type::ObjCInterface:
+  case Type::ObjCTypeParam:
+  case Type::TemplateTypeParm:
+    return ParsedType::make(T);
+  default:
+    llvm_unreachable("Unexpected Type Class");
+  }
+
+  if (!SS || SS->isEmpty())
+    return ParsedType::make(
+        S.Context.getElaboratedType(ETK_None, nullptr, T, nullptr));
+
+  QualType ElTy = S.getElaboratedType(ETK_None, *SS, T);
+  if (!WantNontrivialTypeSourceInfo)
+    return ParsedType::make(ElTy);
+
+  TypeLocBuilder Builder;
+  Builder.pushTypeSpec(T).setNameLoc(NameLoc);
+  ElaboratedTypeLoc ElabTL = Builder.push<ElaboratedTypeLoc>(ElTy);
+  ElabTL.setElaboratedKeywordLoc(SourceLocation());
+  ElabTL.setQualifierLoc(SS->getWithLocInContext(S.Context));
+  return S.CreateParsedType(ElTy, Builder.getTypeSourceInfo(S.Context, ElTy));
+}
+
 /// If the identifier refers to a type name within this scope,
 /// return the declaration of that type.
 ///
@@ -494,7 +532,7 @@ ParsedType Sema::getTypeName(const IdentifierInfo &II, SourceLocation NameLoc,
   } else if (auto *UD = dyn_cast<UnresolvedUsingIfExistsDecl>(IIDecl)) {
     (void)DiagnoseUseOfDecl(UD, NameLoc);
     // Recover with 'int'
-    T = Context.IntTy;
+    return ParsedType::make(Context.IntTy);
   } else if (AllowDeducedTemplate) {
     if (auto *TD = getAsTypeTemplateDecl(IIDecl))
       T = Context.getDeducedTemplateSpecializationType(TemplateName(TD),
@@ -507,27 +545,7 @@ ParsedType Sema::getTypeName(const IdentifierInfo &II, SourceLocation NameLoc,
     return nullptr;
   }
 
-  // NOTE: avoid constructing an ElaboratedType(Loc) if this is a
-  // constructor or destructor name (in such a case, the scope specifier
-  // will be attached to the enclosing Expr or Decl node).
-  if (SS && SS->isNotEmpty() && !IsCtorOrDtorName &&
-      !isa<ObjCInterfaceDecl, UnresolvedUsingIfExistsDecl>(IIDecl)) {
-    if (WantNontrivialTypeSourceInfo) {
-      // Construct a type with type-source information.
-      TypeLocBuilder Builder;
-      Builder.pushTypeSpec(T).setNameLoc(NameLoc);
-
-      T = getElaboratedType(ETK_None, *SS, T);
-      ElaboratedTypeLoc ElabTL = Builder.push<ElaboratedTypeLoc>(T);
-      ElabTL.setElaboratedKeywordLoc(SourceLocation());
-      ElabTL.setQualifierLoc(SS->getWithLocInContext(Context));
-      return CreateParsedType(T, Builder.getTypeSourceInfo(Context, T));
-    } else {
-      T = getElaboratedType(ETK_None, *SS, T);
-    }
-  }
-
-  return ParsedType::make(T);
+  return buildNamedType(*this, SS, T, NameLoc, WantNontrivialTypeSourceInfo);
 }
 
 // Builds a fake NNS for the given decl context.
@@ -843,21 +861,6 @@ static bool isTagTypeWithMissingTag(Sema &SemaRef, LookupResult &Result,
   return false;
 }
 
-/// Build a ParsedType for a simple-type-specifier with a nested-name-specifier.
-static ParsedType buildNestedType(Sema &S, CXXScopeSpec &SS,
-                                  QualType T, SourceLocation NameLoc) {
-  ASTContext &Context = S.Context;
-
-  TypeLocBuilder Builder;
-  Builder.pushTypeSpec(T).setNameLoc(NameLoc);
-
-  T = S.getElaboratedType(ETK_None, SS, T);
-  ElaboratedTypeLoc ElabTL = Builder.push<ElaboratedTypeLoc>(T);
-  ElabTL.setElaboratedKeywordLoc(SourceLocation());
-  ElabTL.setQualifierLoc(SS.getWithLocInContext(Context));
-  return S.CreateParsedType(T, Builder.getTypeSourceInfo(Context, T));
-}
-
 Sema::NameClassification Sema::ClassifyName(Scope *S, CXXScopeSpec &SS,
                                             IdentifierInfo *&Name,
                                             SourceLocation NameLoc,
@@ -1138,10 +1141,7 @@ Corrected:
   if (TypeDecl *Type = dyn_cast<TypeDecl>(FirstDecl)) {
     DiagnoseUseOfDecl(Type, NameLoc);
     MarkAnyDeclReferenced(Type->getLocation(), Type, /*OdrUse=*/false);
-    QualType T = Context.getTypeDeclType(Type);
-    if (SS.isNotEmpty())
-      return buildNestedType(*this, SS, T, NameLoc);
-    return ParsedType::make(T);
+    return buildNamedType(*this, &SS, Context.getTypeDeclType(Type), NameLoc);
   }
 
   ObjCInterfaceDecl *Class = dyn_cast<ObjCInterfaceDecl>(FirstDecl);
@@ -1190,10 +1190,7 @@ Corrected:
       isTagTypeWithMissingTag(*this, Result, S, SS, Name, NameLoc)) {
     TypeDecl *Type = Result.getAsSingle<TypeDecl>();
     DiagnoseUseOfDecl(Type, NameLoc);
-    QualType T = Context.getTypeDeclType(Type);
-    if (SS.isNotEmpty())
-      return buildNestedType(*this, SS, T, NameLoc);
-    return ParsedType::make(T);
+    return buildNamedType(*this, &SS, Context.getTypeDeclType(Type), NameLoc);
   }
 
   // If we already know which single declaration is referenced, just annotate

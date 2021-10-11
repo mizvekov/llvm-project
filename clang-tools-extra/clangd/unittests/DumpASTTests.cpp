@@ -120,7 +120,8 @@ declaration: Var - root
         expression: DeclRef - operator+
       expression: MaterializeTemporary - lvalue
         expression: CXXTemporaryObject - Foo
-          type: Record - Foo
+          type: Elaborated
+            type: Record - Foo
       expression: IntegerLiteral - 42
       )"},
       {R"cpp(

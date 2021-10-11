@@ -115,8 +115,8 @@ namespace rdar9366066 {
   enum class X : unsigned { value };
 
   void f(X x) {
-    x % X::value; // expected-error{{invalid operands to binary expression ('rdar9366066::X' and 'rdar9366066::X')}}
-    x % 8; // expected-error{{invalid operands to binary expression ('rdar9366066::X' and 'int')}}
+    x % X::value; // expected-error{{invalid operands to binary expression ('X' and 'rdar9366066::X')}}
+    x % 8; // expected-error{{invalid operands to binary expression ('X' and 'int')}}
   }
 }
 
@@ -272,7 +272,7 @@ namespace PR15633 {
 
 namespace PR16900 {
   enum class A;
-  A f(A a) { return -a; } // expected-error {{invalid argument type 'PR16900::A' to unary expression}}
+  A f(A a) { return -a; } // expected-error {{invalid argument type 'A' to unary expression}}
 }
 
 namespace PR18551 {
@@ -310,7 +310,7 @@ namespace test11 {
   typedef E E2;
   E2 f1() { return E::a; }
 
-  bool f() { return !f1(); } // expected-error {{invalid argument type 'test11::E2' (aka 'test11::E') to unary expression}}
+  bool f() { return !f1(); } // expected-error {{invalid argument type 'E2' (aka 'test11::E') to unary expression}}
 }
 
 namespace PR35586 {

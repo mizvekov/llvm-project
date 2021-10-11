@@ -55,7 +55,7 @@ namespace subobject {
     ~A();
   };
   struct B : A { // expected-note {{here}}
-    constexpr ~B() {} // expected-error {{destructor cannot be declared constexpr because base class 'subobject::A' does not have a constexpr destructor}}
+    constexpr ~B() {} // expected-error {{destructor cannot be declared constexpr because base class 'A' does not have a constexpr destructor}}
   };
   struct C {
     A a; // expected-note {{here}}

@@ -25,7 +25,7 @@ public:
   StaticAccessedThroughInstanceCheck(StringRef Name, ClangTidyContext *Context)
       : ClangTidyCheck(Name, Context),
         NameSpecifierNestingThreshold(
-            Options.get("NameSpecifierNestingThreshold", 3U)) {}
+            Options.get("NameSpecifierNestingThreshold", 2U)) {}
 
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;

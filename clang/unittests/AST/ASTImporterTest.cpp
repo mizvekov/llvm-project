@@ -420,14 +420,15 @@ TEST_P(ImportExpr, ImportParenListExpr) {
       "typedef dummy<int> declToImport;"
       "template class dummy<int>;",
       Lang_CXX03, "", Lang_CXX03, Verifier,
-      typedefDecl(hasType(templateSpecializationType(
+      typedefDecl(hasType(elaboratedType(namesType(templateSpecializationType(
           hasDeclaration(classTemplateSpecializationDecl(hasSpecializedTemplate(
-              classTemplateDecl(hasTemplateDecl(cxxRecordDecl(hasMethod(allOf(
-                  hasName("f"),
-                  hasBody(compoundStmt(has(declStmt(hasSingleDecl(
-                      varDecl(hasInitializer(parenListExpr(has(unaryOperator(
-                          hasOperatorName("*"),
-                          hasUnaryOperand(cxxThisExpr())))))))))))))))))))))));
+              classTemplateDecl(hasTemplateDecl(cxxRecordDecl(hasMethod(
+                  allOf(hasName("f"),
+                        hasBody(compoundStmt(has(declStmt(hasSingleDecl(varDecl(
+                            hasInitializer(parenListExpr(has(unaryOperator(
+                                hasOperatorName("*"),
+                                hasUnaryOperand(
+                                    cxxThisExpr())))))))))))))))))))))))));
 }
 
 TEST_P(ImportExpr, ImportSwitch) {
@@ -514,20 +515,19 @@ TEST_P(ImportExpr, ImportPredefinedExpr) {
 
 TEST_P(ImportExpr, ImportInitListExpr) {
   MatchVerifier<Decl> Verifier;
-  testImport(
-      "void declToImport() {"
-      "  struct point { double x; double y; };"
-      "  point ptarray[10] = { [2].y = 1.0, [2].x = 2.0,"
-      "                        [0].x = 1.0 }; }",
-      Lang_CXX03, "", Lang_CXX03, Verifier,
-      functionDecl(hasDescendant(initListExpr(
-          has(cxxConstructExpr(requiresZeroInitialization())),
-          has(initListExpr(
-              hasType(asString("struct point")), has(floatLiteral(equals(1.0))),
-              has(implicitValueInitExpr(hasType(asString("double")))))),
-          has(initListExpr(hasType(asString("struct point")),
-                           has(floatLiteral(equals(2.0))),
-                           has(floatLiteral(equals(1.0)))))))));
+  testImport("void declToImport() {"
+             "  struct point { double x; double y; };"
+             "  point ptarray[10] = { [2].y = 1.0, [2].x = 2.0,"
+             "                        [0].x = 1.0 }; }",
+             Lang_CXX03, "", Lang_CXX03, Verifier,
+             functionDecl(hasDescendant(initListExpr(
+                 has(cxxConstructExpr(requiresZeroInitialization())),
+                 has(initListExpr(
+                     hasType(asString("point")), has(floatLiteral(equals(1.0))),
+                     has(implicitValueInitExpr(hasType(asString("double")))))),
+                 has(initListExpr(hasType(asString("point")),
+                                  has(floatLiteral(equals(2.0))),
+                                  has(floatLiteral(equals(1.0)))))))));
 }
 
 
@@ -656,7 +656,8 @@ TEST_P(ImportType, ImportDeducedTemplateSpecialization) {
              "class C { public: C(T); };"
              "C declToImport(123);",
              Lang_CXX17, "", Lang_CXX17, Verifier,
-             varDecl(hasType(deducedTemplateSpecializationType())));
+             varDecl(hasType(elaboratedType(
+                 namesType(deducedTemplateSpecializationType())))));
 }
 
 const internal::VariadicDynCastAllOfMatcher<Stmt, SizeOfPackExpr>
@@ -6950,7 +6951,7 @@ TEST_P(CTAD, DeductionGuideShouldReferToANonLocalTypedef) {
   ParmVarDecl *Param = Guide->getParamDecl(0);
   // The type of the first param (which is a typedef) should match the typedef
   // in the global scope.
-  EXPECT_EQ(Param->getType()->castAs<TypedefType>()->getDecl(), Typedef);
+  EXPECT_EQ(Param->getType()->getAs<TypedefType>()->getDecl(), Typedef);
 }
 
 TEST_P(CTAD, DeductionGuideShouldReferToANonLocalTypedefInParamPtr) {
@@ -6991,7 +6992,7 @@ TEST_P(CTAD, DeductionGuideShouldCopyALocalTypedef) {
   auto *Typedef = FirstDeclMatcher<TypedefNameDecl>().match(
       TU, typedefNameDecl(hasName("U")));
   ParmVarDecl *Param = Guide->getParamDecl(0);
-  EXPECT_NE(Param->getType()->castAs<TypedefType>()->getDecl(), Typedef);
+  EXPECT_NE(Param->getType()->getAs<TypedefType>()->getDecl(), Typedef);
 }
 
 INSTANTIATE_TEST_SUITE_P(ParameterizedTests, CTAD,
