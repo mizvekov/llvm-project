@@ -1889,11 +1889,13 @@ static Sema::TemplateDeductionResult DeduceTemplateArgumentsByTypeMatch(
       QualType PPT = MPP->getPointeeType();
       if (PPT->isFunctionType())
         S.adjustMemberFunctionCC(PPT, /*IsStatic=*/true,
-                                 /*IsCtorOrDtor=*/false, Info.getLocation());
+                                 /*IsCtorOrDtor=*/false, /*isDeduced=*/true,
+                                 Info.getLocation());
       QualType APT = MPA->getPointeeType();
       if (APT->isFunctionType())
         S.adjustMemberFunctionCC(APT, /*IsStatic=*/true,
-                                 /*IsCtorOrDtor=*/false, Info.getLocation());
+                                 /*IsCtorOrDtor=*/false, /*isDeduced=*/true,
+                                 Info.getLocation());
 
       unsigned SubTDF = TDF & TDF_IgnoreQualifiers;
       if (auto Result = DeduceTemplateArgumentsByTypeMatch(

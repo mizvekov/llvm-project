@@ -443,10 +443,10 @@ public:
   void addQualifiers(Qualifiers Q) {
     // If the other set doesn't have any non-boolean qualifiers, just
     // bit-or it in.
-    if (!(Q.Mask & ~CVRMask))
+    if (!(Q.Mask & ~CVRUMask))
       Mask |= Q.Mask;
     else {
-      Mask |= (Q.Mask & CVRMask);
+      Mask |= (Q.Mask & CVRUMask);
       if (Q.hasAddressSpace())
         addAddressSpace(Q.getAddressSpace());
       if (Q.hasObjCGCAttr())
@@ -460,10 +460,10 @@ public:
   void removeQualifiers(Qualifiers Q) {
     // If the other set doesn't have any non-boolean qualifiers, just
     // bit-and the inverse in.
-    if (!(Q.Mask & ~CVRMask))
+    if (!(Q.Mask & ~CVRUMask))
       Mask &= ~Q.Mask;
     else {
-      Mask &= ~(Q.Mask & CVRMask);
+      Mask &= ~(Q.Mask & CVRUMask);
       if (getObjCGCAttr() == Q.getObjCGCAttr())
         removeObjCGCAttr();
       if (getObjCLifetime() == Q.getObjCLifetime())
@@ -615,6 +615,7 @@ private:
 
   static const uint32_t UMask = 0x8;
   static const uint32_t UShift = 3;
+  static const uint32_t CVRUMask = CVRMask | UMask;
   static const uint32_t GCAttrMask = 0x30;
   static const uint32_t GCAttrShift = 4;
   static const uint32_t LifetimeMask = 0x1C0;

@@ -79,12 +79,9 @@ auto matchSortWithPointers() -> decltype(decl()) {
                     );
 
   // Match only if the container has pointer-type elements.
-  auto IteratesPointerEltsM = hasArgument(0,
-                                hasType(cxxRecordDecl(has(
-                                  fieldDecl(hasType(hasCanonicalType(
-                                    pointsTo(hasCanonicalType(pointerType()))
-                                  )))
-                              ))));
+  auto IteratesPointerEltsM = hasArgument(
+      0, hasType(hasCanonicalType(hasDeclaration(cxxRecordDecl(has(fieldDecl(
+             hasType(hasCanonicalType(pointsTo(pointerType()))))))))));
 
   auto PointerSortM = traverse(
       TK_AsIs,

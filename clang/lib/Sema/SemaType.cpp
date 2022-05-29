@@ -3067,7 +3067,8 @@ QualType Sema::BuildMemberPointerType(QualType T, QualType Class,
       (Entity.getNameKind() == DeclarationName::CXXConstructorName) ||
       (Entity.getNameKind() == DeclarationName::CXXDestructorName);
   if (T->isFunctionType())
-    adjustMemberFunctionCC(T, /*IsStatic=*/false, IsCtorOrDtor, Loc);
+    adjustMemberFunctionCC(T, /*IsStatic=*/false, /*isDeduced=*/false,
+                           IsCtorOrDtor, Loc);
 
   return Context.getMemberPointerType(T, Class.getTypePtr());
 }
@@ -7904,7 +7905,7 @@ bool Sema::hasExplicitCallingConv(QualType T) {
 }
 
 void Sema::adjustMemberFunctionCC(QualType &T, bool IsStatic, bool IsCtorOrDtor,
-                                  SourceLocation Loc) {
+                                  bool isDeduced, SourceLocation Loc) {
   FunctionTypeUnwrapper Unwrapped(*this, T);
   const FunctionType *FT = Unwrapped.get();
   bool IsVariadic = (isa<FunctionProtoType>(FT) &&
@@ -7935,7 +7936,7 @@ void Sema::adjustMemberFunctionCC(QualType &T, bool IsStatic, bool IsCtorOrDtor,
     if (CurCC != DefaultCC || DefaultCC == ToCC)
       return;
 
-    if (hasExplicitCallingConv(T))
+    if (!isDeduced && hasExplicitCallingConv(T))
       return;
   }
 
