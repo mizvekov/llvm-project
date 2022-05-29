@@ -52,9 +52,11 @@ using test2 = B<int, 1>;
 // CHECK-NEXT:           |   |-TypeAliasTemplate 0x{{[0-9A-Fa-f]+}} 'B'
 // CHECK-NEXT:           |   `-BuiltinType 0x{{[0-9A-Fa-f]+}} 'int'
 // CHECK-NEXT:           |-TemplateArgument expr '1'
-// CHECK-NEXT:           | `-ConstantExpr 0x{{[0-9A-Fa-f]+}} <line:{{.+}}:42> 'int'
+// CHECK-NEXT:           | `-ConstantExpr 0x{{[0-9A-Fa-f]+}} <line:{{.+}}:64> 'int'
 // CHECK-NEXT:           |   |-value: Int 1
-// CHECK-NEXT:           |   `-IntegerLiteral 0x{{[0-9A-Fa-f]+}} <col:42> 'int' 1
+// CHECK-NEXT:           |   `-SubstNonTypeTemplateParmExpr 0x{{[0-9A-Fa-f]+}} <col:64> 'int'
+// CHECK-NEXT:           |     |-NonTypeTemplateParmDecl 0x{{[0-9A-Fa-f]+}} <col:21, col:24> col:24 referenced 'B1' depth 0 index 1 B2
+// CHECK-NEXT:           |     `-IntegerLiteral 0x{{[0-9A-Fa-f]+}} <col:64> 'int' 1
 // CHECK-NEXT:           `-TemplateSpecializationType 0x{{[0-9A-Fa-f]+}} 'A<int, 0>' sugar
 // CHECK-NEXT:             |-name: 'A' qualified
 // CHECK-NEXT:             | `-ClassTemplateDecl {{.+}} A
@@ -63,9 +65,9 @@ using test2 = B<int, 1>;
 // CHECK-NEXT:             |   |-TypeAliasTemplate 0x{{[0-9A-Fa-f]+}} 'B'
 // CHECK-NEXT:             |   `-BuiltinType 0x{{[0-9A-Fa-f]+}} 'int'
 // CHECK-NEXT:             |-TemplateArgument expr '0'
-// CHECK-NEXT:             | `-ConstantExpr 0x{{[0-9A-Fa-f]+}} <line:{{.+}}:42> 'int'
+// CHECK-NEXT:             | `-ConstantExpr 0x{{[0-9A-Fa-f]+}} <line:{{.+}}:64> 'int'
 // CHECK-NEXT:             |   |-value: Int 0
-// CHECK-NEXT:             |   `-IntegerLiteral 0x{{[0-9A-Fa-f]+}} <col:42> 'int' 0
+// CHECK-NEXT:             |   `-IntegerLiteral 0x{{[0-9A-Fa-f]+}} <col:64> 'int' 0
 // CHECK-NEXT:             `-RecordType 0x{{[0-9A-Fa-f]+}} 'A<int, 0>'
 // CHECK-NEXT:               `-ClassTemplateSpecialization 0x{{[0-9A-Fa-f]+}} 'A'
 
