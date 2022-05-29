@@ -1238,8 +1238,6 @@ private:
 
   QualType getTypeDeclTypeSlow(const TypeDecl *Decl) const;
 
-  QualType getPipeType(QualType T, bool ReadOnly) const;
-
 public:
   /// Return the uniqued reference to the type for an address space
   /// qualified type with the specified type and address space.
@@ -1382,6 +1380,9 @@ public:
   /// Gets the struct used to keep track of the descriptor for pointer to
   /// blocks.
   QualType getBlockDescriptorType() const;
+
+  // Return a pipe type for the specified type.
+  QualType getPipeType(QualType T, bool ReadOnly) const;
 
   /// Return a read_only pipe type for the specified type.
   QualType getReadPipeType(QualType T) const;

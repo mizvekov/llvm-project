@@ -2567,7 +2567,8 @@ public:
   bool isSimpleTypeSpecifier(tok::TokenKind Kind) const;
 
   enum class DiagCtorKind { None, Implicit, Typename };
-  QualType getTypeDeclType(DeclContext *LookupCtx, DiagCtorKind DCK,
+  QualType getTypeDeclType(const NestedNameSpecifier *NNS,
+                           DeclContext *LookupCtx, DiagCtorKind DCK,
                            TypeDecl *TD, SourceLocation NameLoc);
 
   ParsedType getTypeName(const IdentifierInfo &II, SourceLocation NameLoc,
@@ -4663,8 +4664,9 @@ public:
   /// Adjust the calling convention of a method to be the ABI default if it
   /// wasn't specified explicitly.  This handles method types formed from
   /// function type typedefs and typename template arguments.
+  /// For deduced types, don't suppress the adjusment even for explicit CC.
   void adjustMemberFunctionCC(QualType &T, bool IsStatic, bool IsCtorOrDtor,
-                              SourceLocation Loc);
+                              bool IsDeduced, SourceLocation Loc);
 
   // Check if there is an explicit attribute, but only look through parens.
   // The intent is to look for an attribute on the current declarator, but not
@@ -9783,6 +9785,8 @@ public:
       return Infos.data();
     }
   };
+
+  QualType resugar(const NestedNameSpecifier *NNS, QualType T);
 
   void PerformPendingInstantiations(bool LocalOnly = false);
 

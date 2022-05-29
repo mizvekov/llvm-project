@@ -169,7 +169,8 @@ bool Sema::isSimpleTypeSpecifier(tok::TokenKind Kind) const {
   return false;
 }
 
-QualType Sema::getTypeDeclType(DeclContext *LookupCtx, DiagCtorKind DCK,
+QualType Sema::getTypeDeclType(const NestedNameSpecifier *NNS,
+                               DeclContext *LookupCtx, DiagCtorKind DCK,
                                TypeDecl *TD, SourceLocation NameLoc) {
   auto *LookupRD = dyn_cast_or_null<CXXRecordDecl>(LookupCtx);
   auto *FoundRD = dyn_cast<CXXRecordDecl>(TD);
@@ -186,7 +187,7 @@ QualType Sema::getTypeDeclType(DeclContext *LookupCtx, DiagCtorKind DCK,
 
   DiagnoseUseOfDecl(TD, NameLoc);
   MarkAnyDeclReferenced(TD->getLocation(), TD, /*OdrUse=*/false);
-  return Context.getTypeDeclType(TD);
+  return resugar(NNS, Context.getTypeDeclType(TD));
 }
 
 namespace {
@@ -556,7 +557,7 @@ ParsedType Sema::getTypeName(const IdentifierInfo &II, SourceLocation NameLoc,
     // C++ [class.qual]p2: A lookup that would find the injected-class-name
     // instead names the constructors of the class, except when naming a class.
     // This is ill-formed when we're not actually forming a ctor or dtor name.
-    T = getTypeDeclType(LookupCtx,
+    T = getTypeDeclType(SS ? SS->getScopeRep() : nullptr, LookupCtx,
                         IsImplicitTypename ? DiagCtorKind::Implicit
                                            : DiagCtorKind::None,
                         TD, NameLoc);
@@ -9555,7 +9556,7 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
 
   if (D.isFirstDeclarationOfMember())
     adjustMemberFunctionCC(R, D.isStaticMember(), D.isCtorOrDtor(),
-                           D.getIdentifierLoc());
+                           /*isDeduced=*/false, D.getIdentifierLoc());
 
   bool isFriend = false;
   FunctionTemplateDecl *FunctionTemplate = nullptr;
