@@ -190,14 +190,14 @@ void PostfixExpressions(S a, S *p, U<int> *r) {
 
   // FIXME: there is no mention that this used the template keyword.
   p->template foo<int>();
-  // CHECK: CXXMemberCallExpr 0x{{[^ ]*}} <line:[[@LINE-1]]:3, col:24> 'int':'int'
+  // CHECK: CXXMemberCallExpr 0x{{[^ ]*}} <line:[[@LINE-1]]:3, col:24> 'int'
   // CHECK-NEXT: MemberExpr 0x{{[^ ]*}} <col:3, col:22> '<bound member function type>' ->foo 0x{{[^ ]*}}
   // CHECK-NEXT: ImplicitCastExpr
   // CHECK-NEXT: DeclRefExpr 0x{{[^ ]*}} <col:3> 'S *' lvalue ParmVar 0x{{[^ ]*}} 'p' 'S *'
 
   // FIXME: there is no mention that this used the template keyword.
   a.template foo<float>();
-  // CHECK: CXXMemberCallExpr 0x{{[^ ]*}} <line:[[@LINE-1]]:3, col:25> 'float':'float'
+  // CHECK: CXXMemberCallExpr 0x{{[^ ]*}} <line:[[@LINE-1]]:3, col:25> 'float'
   // CHECK-NEXT: MemberExpr 0x{{[^ ]*}} <col:3, col:23> '<bound member function type>' .foo 0x{{[^ ]*}}
   // CHECK-NEXT: DeclRefExpr 0x{{[^ ]*}} <col:3> 'S':'S' lvalue ParmVar 0x{{[^ ]*}} 'a' 'S':'S'
 

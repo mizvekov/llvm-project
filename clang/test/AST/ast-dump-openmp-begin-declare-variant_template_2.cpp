@@ -244,7 +244,7 @@ int test() {
 // CHECK-NEXT:         | |   |-CallExpr [[ADDR_155:0x[a-z0-9]*]] <col:85, col:103> 'int'
 // CHECK-NEXT:         | |   | |-ImplicitCastExpr [[ADDR_156:0x[a-z0-9]*]] <col:85, col:100> 'int (*)(char)' <FunctionToPointerDecay>
 // CHECK-NEXT:         | |   | | `-DeclRefExpr [[ADDR_157:0x[a-z0-9]*]] <col:85, col:100> 'int (char)' {{.*}}Function [[ADDR_47]] 'also_after' 'int (char)' (FunctionTemplate [[ADDR_114]] 'also_after')
-// CHECK-NEXT:         | |   | `-ImplicitCastExpr [[ADDR_158:0x[a-z0-9]*]] <col:102> 'char':'char' <IntegralCast>
+// CHECK-NEXT:         | |   | `-ImplicitCastExpr [[ADDR_158:0x[a-z0-9]*]] <col:102> 'char' <IntegralCast>
 // CHECK-NEXT:         | |   |   `-IntegerLiteral [[ADDR_159:0x[a-z0-9]*]] <col:102> 'int' 0
 // CHECK-NEXT:         | |   `-CallExpr [[ADDR_160:0x[a-z0-9]*]] <line:22:1, line:54:103> 'int'
 // CHECK-NEXT:         | |     |-ImplicitCastExpr [[ADDR_161:0x[a-z0-9]*]] <line:22:1> 'int (*)(char)' <FunctionToPointerDecay>

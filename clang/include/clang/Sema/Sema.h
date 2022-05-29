@@ -5544,13 +5544,11 @@ public:
                    const TemplateArgumentListInfo *TemplateArgs = nullptr,
                    const TemplateArgumentList *ConvertedArgs = nullptr);
 
-  ExprResult
-  BuildAnonymousStructUnionMemberReference(
-      const CXXScopeSpec &SS,
-      SourceLocation nameLoc,
+  ExprResult BuildAnonymousStructUnionMemberReference(
+      const CXXScopeSpec &SS, SourceLocation nameLoc,
       IndirectFieldDecl *indirectField,
       DeclAccessPair FoundDecl = DeclAccessPair::make(nullptr, AS_none),
-      Expr *baseObjectExpr = nullptr,
+      Expr *baseObjectExpr = nullptr, const Type *BaseType = nullptr,
       SourceLocation opLoc = SourceLocation());
 
   ExprResult BuildPossibleImplicitMemberExpr(
@@ -5744,7 +5742,8 @@ public:
 
   ExprResult BuildFieldReferenceExpr(Expr *BaseExpr, bool IsArrow,
                                      SourceLocation OpLoc,
-                                     const CXXScopeSpec &SS, FieldDecl *Field,
+                                     const NestedNameSpecifierLoc &NNS,
+                                     FieldDecl *Field, QualType FieldType,
                                      DeclAccessPair FoundDecl,
                                      const DeclarationNameInfo &MemberNameInfo);
 
@@ -9790,6 +9789,16 @@ public:
   };
 
   QualType resugar(const NestedNameSpecifier *NNS, QualType T);
+  QualType resugar(const NestedNameSpecifier *NNS, NamedDecl *ND,
+                   ArrayRef<TemplateArgument> Args, QualType T);
+  QualType resugar(NamedDecl *ND, ArrayRef<TemplateArgument> Args, QualType T);
+  QualType resugar(const Type *Base, const NestedNameSpecifier *FieldNNS,
+                   QualType T);
+  QualType resugar(const Type *Base, const NestedNameSpecifier *FieldNNS,
+                   NamedDecl *ND, ArrayRef<TemplateArgument> Args, QualType T);
+  QualType resugar(const Type *Base, QualType T);
+  QualType resugar(const Type *Base, NamedDecl *ND,
+                   ArrayRef<TemplateArgument> Args, QualType T);
 
   void PerformPendingInstantiations(bool LocalOnly = false);
 

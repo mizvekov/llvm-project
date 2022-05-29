@@ -2848,7 +2848,6 @@ void TestNonADLCall3() {
 // CHECK-NEXT:       }
 // CHECK-NEXT:      },
 // CHECK-NEXT:      "type": {
-// CHECK-NEXT:       "desugaredQualType": "int",
 // CHECK-NEXT:       "qualType": "int"
 // CHECK-NEXT:      },
 // CHECK-NEXT:      "valueCategory": "prvalue",
@@ -2948,7 +2947,6 @@ void TestNonADLCall3() {
 // CHECK-NEXT:       }
 // CHECK-NEXT:      },
 // CHECK-NEXT:      "type": {
-// CHECK-NEXT:       "desugaredQualType": "float",
 // CHECK-NEXT:       "qualType": "float"
 // CHECK-NEXT:      },
 // CHECK-NEXT:      "valueCategory": "prvalue",

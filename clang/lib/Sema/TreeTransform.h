@@ -2737,10 +2737,12 @@ public:
         return ExprError();
       Base = BaseResult.get();
 
-      CXXScopeSpec EmptySS;
+      // FIXME: resugar.
       return getSema().BuildFieldReferenceExpr(
-          Base, isArrow, OpLoc, EmptySS, cast<FieldDecl>(Member),
-          DeclAccessPair::make(FoundDecl, FoundDecl->getAccess()), MemberNameInfo);
+          Base, isArrow, OpLoc, NestedNameSpecifierLoc(),
+          cast<FieldDecl>(Member), Member->getType(),
+          DeclAccessPair::make(FoundDecl, FoundDecl->getAccess()),
+          MemberNameInfo);
     }
 
     CXXScopeSpec SS;

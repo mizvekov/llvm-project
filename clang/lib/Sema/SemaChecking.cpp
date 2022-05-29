@@ -596,9 +596,11 @@ struct BuiltinDumpStructGenerator {
       if (!FD || FD->isUnnamedBitfield() || FD->isAnonymousStructOrUnion())
         continue;
 
+      QualType FieldType = FD->getType();
+
       llvm::SmallString<20> Format = llvm::StringRef("%s%s %s ");
       llvm::SmallVector<Expr *, 5> Args = {FieldIndentArg,
-                                           getTypeString(FD->getType()),
+                                           getTypeString(FieldType),
                                            getStringLiteral(FD->getName())};
 
       if (FD->isBitField()) {
@@ -614,15 +616,16 @@ struct BuiltinDumpStructGenerator {
       ExprResult Field =
           IFD ? S.BuildAnonymousStructUnionMemberReference(
                     CXXScopeSpec(), Loc, IFD,
-                    DeclAccessPair::make(IFD, AS_public), RecordArg, Loc)
+                    DeclAccessPair::make(IFD, AS_public), RecordArg, nullptr,
+                    Loc)
               : S.BuildFieldReferenceExpr(
-                    RecordArg, RecordArgIsPtr, Loc, CXXScopeSpec(), FD,
-                    DeclAccessPair::make(FD, AS_public),
+                    RecordArg, RecordArgIsPtr, Loc, NestedNameSpecifierLoc(),
+                    FD, FieldType, DeclAccessPair::make(FD, AS_public),
                     DeclarationNameInfo(FD->getDeclName(), Loc));
       if (Field.isInvalid())
         return true;
 
-      auto *InnerRD = FD->getType()->getAsRecordDecl();
+      auto *InnerRD = FieldType->getAsRecordDecl();
       auto *InnerCXXRD = dyn_cast_or_null<CXXRecordDecl>(InnerRD);
       if (InnerRD && (!InnerCXXRD || InnerCXXRD->isAggregate())) {
         // Recursively print the values of members of aggregate record type.
@@ -631,7 +634,7 @@ struct BuiltinDumpStructGenerator {
           return true;
       } else {
         Format += " ";
-        if (appendFormatSpecifier(FD->getType(), Format)) {
+        if (appendFormatSpecifier(FieldType, Format)) {
           // We know how to print this field.
           Args.push_back(Field.get());
         } else {

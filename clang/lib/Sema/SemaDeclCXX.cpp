@@ -1404,6 +1404,9 @@ static bool checkMemberDecomposition(Sema &S, ArrayRef<BindingDecl*> Bindings,
     if (FD->isUnnamedBitfield())
       continue;
 
+    // FIXME: Avoid having to recreate the naming context for every field.
+    QualType FieldType = S.resugar(DecompType.getTypePtr(), FD->getType());
+
     // All the non-static data members are required to be nameable, so they
     // must all have names.
     if (!FD->getDeclName()) {
@@ -1415,7 +1418,7 @@ static bool checkMemberDecomposition(Sema &S, ArrayRef<BindingDecl*> Bindings,
 
       if (FD->isAnonymousStructOrUnion()) {
         S.Diag(Src->getLocation(), diag::err_decomp_decl_anon_union_member)
-          << DecompType << FD->getType()->isUnionType();
+            << DecompType << FieldType->isUnionType();
         S.Diag(FD->getLocation(), diag::note_declared_at);
         return true;
       }
@@ -1447,7 +1450,7 @@ static bool checkMemberDecomposition(Sema &S, ArrayRef<BindingDecl*> Bindings,
     if (E.isInvalid())
       return true;
     E = S.BuildFieldReferenceExpr(E.get(), /*IsArrow*/ false, Loc,
-                                  CXXScopeSpec(), FD,
+                                  NestedNameSpecifierLoc(), FD, FieldType,
                                   DeclAccessPair::make(FD, FD->getAccess()),
                                   DeclarationNameInfo(FD->getDeclName(), Loc));
     if (E.isInvalid())
@@ -1461,7 +1464,7 @@ static bool checkMemberDecomposition(Sema &S, ArrayRef<BindingDecl*> Bindings,
     Qualifiers Q = DecompType.getQualifiers();
     if (FD->isMutable())
       Q.removeConst();
-    B->setBinding(S.BuildQualifiedType(FD->getType(), Loc, Q), E.get());
+    B->setBinding(S.BuildQualifiedType(FieldType, Loc, Q), E.get());
   }
 
   if (I != Bindings.size())
@@ -8284,10 +8287,13 @@ private:
 
     DeclAccessPair Found = DeclAccessPair::make(Field, Field->getAccess());
     DeclarationNameInfo NameInfo(Field->getDeclName(), Loc);
+    QualType FieldType = Field->getType();
     return {S.BuildFieldReferenceExpr(Obj.first.get(), /*IsArrow=*/false, Loc,
-                                      CXXScopeSpec(), Field, Found, NameInfo),
+                                      NestedNameSpecifierLoc(), Field,
+                                      FieldType, Found, NameInfo),
             S.BuildFieldReferenceExpr(Obj.second.get(), /*IsArrow=*/false, Loc,
-                                      CXXScopeSpec(), Field, Found, NameInfo)};
+                                      NestedNameSpecifierLoc(), Field,
+                                      FieldType, Found, NameInfo)};
   }
 
   // FIXME: When expanding a subobject, register a note in the code synthesis
