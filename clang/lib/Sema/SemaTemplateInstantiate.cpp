@@ -1821,6 +1821,7 @@ TemplateInstantiator::TransformTemplateTypeParmType(TypeLocBuilder &TLB,
 
     Decl *ReplacedDecl = TemplateArgs.getReplacedDecl(T->getDepth());
 
+    Optional<unsigned> PackIndex;
     if (T->isParameterPack()) {
       assert(Arg.getKind() == TemplateArgument::Pack &&
              "Missing argument pack");
@@ -1838,6 +1839,7 @@ TemplateInstantiator::TransformTemplateTypeParmType(TypeLocBuilder &TLB,
       }
 
       Arg = getPackSubstitutedTemplateArgument(getSema(), Arg);
+      PackIndex = getSema().ArgumentPackSubstitutionIndex;
     }
 
     assert(Arg.getKind() == TemplateArgument::Type &&
@@ -1847,7 +1849,7 @@ TemplateInstantiator::TransformTemplateTypeParmType(TypeLocBuilder &TLB,
 
     // TODO: only do this uniquing once, at the start of instantiation.
     QualType Result = getSema().Context.getSubstTemplateTypeParmType(
-        Replacement, ReplacedDecl, T->getIndex());
+        Replacement, ReplacedDecl, T->getIndex(), PackIndex);
     SubstTemplateTypeParmTypeLoc NewTL
       = TLB.push<SubstTemplateTypeParmTypeLoc>(Result);
     NewTL.setNameLoc(TL.getNameLoc());
@@ -1892,7 +1894,8 @@ QualType TemplateInstantiator::TransformSubstTemplateTypeParmPackType(
       getPackSubstitutedTemplateArgument(getSema(), T->getArgumentPack());
 
   QualType Result = getSema().Context.getSubstTemplateTypeParmType(
-      Arg.getAsType(), NewReplaced, T->getIndex());
+      Arg.getAsType(), NewReplaced, T->getIndex(),
+      getSema().ArgumentPackSubstitutionIndex);
   SubstTemplateTypeParmTypeLoc NewTL =
       TLB.push<SubstTemplateTypeParmTypeLoc>(Result);
   NewTL.setNameLoc(TL.getNameLoc());

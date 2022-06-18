@@ -136,13 +136,13 @@ template <typename... Cs> struct foo {
 };
 using t1 = foo<int, short>::bind<char, float>;
 // CHECK:      TemplateSpecializationType 0x{{[^ ]*}} 'Y<char, float, int, short>' sugar Y
-// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'char' sugar typename depth 0 index 0 ... Bs
+// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'char' sugar typename depth 0 index 0 ... Bs pack_index 0
 // CHECK-NEXT: TypeAliasTemplate 0x{{[^ ]*}} 'Z'
-// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'float' sugar typename depth 0 index 0 ... Bs
+// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'float' sugar typename depth 0 index 0 ... Bs pack_index 1
 // CHECK-NEXT: TypeAliasTemplate 0x{{[^ ]*}} 'Z'
-// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'int' sugar typename depth 0 index 0 ... Bs
+// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'int' sugar typename depth 0 index 0 ... Bs pack_index 2
 // CHECK-NEXT: TypeAliasTemplate 0x{{[^ ]*}} 'Z'
-// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'short' sugar typename depth 0 index 0 ... Bs
+// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'short' sugar typename depth 0 index 0 ... Bs pack_index 3
 // CHECK-NEXT: TypeAliasTemplate 0x{{[^ ]*}} 'Z'
 
 template <typename... T> struct D {
@@ -152,13 +152,13 @@ using t2 = D<float, char>::B<int, short>;
 // CHECK:      TemplateSpecializationType 0x{{[^ ]*}} 'B<int, short>' sugar alias B
 // CHECK:      FunctionProtoType 0x{{[^ ]*}} 'int (int (*)(float, int), int (*)(char, short))' cdecl
 // CHECK:      FunctionProtoType 0x{{[^ ]*}} 'int (float, int)' cdecl
-// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'float' sugar typename depth 0 index 0 ... T
+// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'float' sugar typename depth 0 index 0 ... T pack_index 0
 // CHECK-NEXT: ClassTemplateSpecialization 0x{{[^ ]*}} 'D'
-// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'int' sugar typename depth 0 index 0 ... U
+// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'int' sugar typename depth 0 index 0 ... U pack_index 0
 // CHECK-NEXT: TypeAliasTemplate 0x{{[^ ]*}} 'B'
 // CHECK:      FunctionProtoType 0x{{[^ ]*}} 'int (char, short)' cdecl
-// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'char' sugar typename depth 0 index 0 ... T
+// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'char' sugar typename depth 0 index 0 ... T pack_index 1
 // CHECK-NEXT: ClassTemplateSpecialization 0x{{[^ ]*}} 'D'
-// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'short' sugar typename depth 0 index 0 ... U
+// CHECK:      SubstTemplateTypeParmType 0x{{[^ ]*}} 'short' sugar typename depth 0 index 0 ... U pack_index 1
 // CHECK-NEXT: TypeAliasTemplate 0x{{[^ ]*}} 'B'
 } // namespace PR56099

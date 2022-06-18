@@ -1615,8 +1615,8 @@ public:
                                    QualType Wrapped);
 
   QualType getSubstTemplateTypeParmType(QualType Replacement,
-                                        Decl *ReplacedDecl,
-                                        unsigned Index) const;
+                                        Decl *ReplacedDecl, unsigned Index,
+                                        Optional<unsigned> PackIndex) const;
   QualType getSubstTemplateTypeParmPackType(Decl *ReplacedDecl, unsigned Index,
                                             const TemplateArgument &ArgPack);
 

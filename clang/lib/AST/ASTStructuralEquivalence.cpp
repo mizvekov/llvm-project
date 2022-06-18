@@ -1063,6 +1063,8 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       return false;
     if (Subst1->getIndex() != Subst2->getIndex())
       return false;
+    if (Subst1->getPackIndex() != Subst2->getPackIndex())
+      return false;
     break;
   }
 

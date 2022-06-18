@@ -1801,7 +1801,13 @@ protected:
     unsigned HasNonCanonicalUnderlyingType : 1;
 
     // The index of the template parameter this substitution represents.
-    unsigned Index : 16;
+    unsigned Index : 15;
+
+    /// Represents the index within a pack if this represents a substitution
+    /// from a pack expansion.
+    /// Positive non-zero number represents the index + 1.
+    /// Zero means this is not substituted from an expansion.
+    unsigned PackIndex : 16;
   };
 
   class SubstTemplateTypeParmPackTypeBitfields {
@@ -4993,7 +4999,7 @@ class SubstTemplateTypeParmType final
   Decl *ReplacedDecl;
 
   SubstTemplateTypeParmType(QualType Replacement, Decl *ReplacedDecl,
-                            unsigned Index);
+                            unsigned Index, Optional<unsigned> PackIndex);
 
 public:
   /// Gets the type that was substituted for the template
@@ -5011,18 +5017,27 @@ public:
 
   unsigned getIndex() const { return SubstTemplateTypeParmTypeBits.Index; }
 
+  Optional<unsigned> getPackIndex() const {
+    if (SubstTemplateTypeParmTypeBits.PackIndex == 0)
+      return None;
+    return SubstTemplateTypeParmTypeBits.PackIndex - 1;
+  }
+
   bool isSugared() const { return true; }
   QualType desugar() const { return getReplacementType(); }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
-    Profile(ID, getReplacementType(), getReplacedDecl(), getIndex());
+    Profile(ID, getReplacementType(), getReplacedDecl(), getIndex(),
+            getPackIndex());
   }
 
   static void Profile(llvm::FoldingSetNodeID &ID, QualType Replacement,
-                      const Decl *ReplacedDecl, unsigned Index) {
+                      const Decl *ReplacedDecl, unsigned Index,
+                      Optional<unsigned> PackIndex) {
     ID.AddPointer(ReplacedDecl);
     Replacement.Profile(ID);
     ID.AddInteger(Index);
+    ID.AddInteger(PackIndex ? *PackIndex - 1 : 0);
   }
 
   static bool classof(const Type *T) {

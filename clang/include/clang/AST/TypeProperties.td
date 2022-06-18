@@ -737,11 +737,14 @@ let Class = SubstTemplateTypeParmType in {
   def : Property<"Index", UInt32> {
     let Read = [{ node->getIndex() }];
   }
+  def : Property<"PackIndex", Optional<UInt32>> {
+    let Read = [{ node->getPackIndex() }];
+  }
 
   // The call to getCanonicalType here existed in ASTReader.cpp, too.
   def : Creator<[{
     return ctx.getSubstTemplateTypeParmType(
-        replacementType, replacedDecl, Index);
+        replacementType, replacedDecl, Index, PackIndex);
   }]>;
 }
 

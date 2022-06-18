@@ -1574,6 +1574,8 @@ void TextNodeDumper::VisitSubstTemplateTypeParmType(
     const SubstTemplateTypeParmType *T) {
   dumpDeclRef(T->getReplacedDecl());
   VisitTemplateTypeParmDecl(T->getReplacedParameter());
+  if (auto PackIndex = T->getPackIndex())
+    OS << " pack_index " << *PackIndex;
 }
 
 void TextNodeDumper::VisitSubstTemplateTypeParmPackType(

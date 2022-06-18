@@ -4749,11 +4749,13 @@ QualType ASTContext::getBTFTagAttributedType(const BTFTypeTagAttr *BTFAttr,
 }
 
 /// Retrieve a substitution-result type.
-QualType ASTContext::getSubstTemplateTypeParmType(QualType Replacement,
-                                                  Decl *ReplacedDecl,
-                                                  unsigned Index) const {
+QualType
+ASTContext::getSubstTemplateTypeParmType(QualType Replacement,
+                                         Decl *ReplacedDecl, unsigned Index,
+                                         Optional<unsigned> PackIndex) const {
   llvm::FoldingSetNodeID ID;
-  SubstTemplateTypeParmType::Profile(ID, Replacement, ReplacedDecl, Index);
+  SubstTemplateTypeParmType::Profile(ID, Replacement, ReplacedDecl, Index,
+                                     PackIndex);
   void *InsertPos = nullptr;
   SubstTemplateTypeParmType *SubstParm =
       SubstTemplateTypeParmTypes.FindNodeOrInsertPos(ID, InsertPos);
@@ -4762,8 +4764,8 @@ QualType ASTContext::getSubstTemplateTypeParmType(QualType Replacement,
     void *Mem = Allocate(SubstTemplateTypeParmType::totalSizeToAlloc<QualType>(
                              !Replacement.isCanonical()),
                          TypeAlignment);
-    SubstParm =
-        new (Mem) SubstTemplateTypeParmType(Replacement, ReplacedDecl, Index);
+    SubstParm = new (Mem)
+        SubstTemplateTypeParmType(Replacement, ReplacedDecl, Index, PackIndex);
     Types.push_back(SubstParm);
     SubstTemplateTypeParmTypes.InsertNode(SubstParm, InsertPos);
   }
@@ -12810,11 +12812,14 @@ static QualType getCommonSugarTypeNode(ASTContext &Ctx, const Type *X,
     unsigned Index = SX->getIndex();
     if (Index != SY->getIndex())
       return QualType();
+    auto PackIndex = SX->getPackIndex();
+    if (Index != SY->getPackIndex())
+      return QualType();
     Decl *CD = ::getCommonDecl(SX->getReplacedDecl(), SY->getReplacedDecl());
     if (!CD)
       return QualType();
     return Ctx.getSubstTemplateTypeParmType(Ctx.getQualifiedType(Underlying),
-                                            CD, Index);
+                                            CD, Index, PackIndex);
   }
   case Type::ObjCTypeParam:
     // FIXME: Try to merge these.

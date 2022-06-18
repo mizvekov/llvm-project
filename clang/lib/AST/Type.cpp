@@ -1166,8 +1166,9 @@ public:
           == T->getReplacementType().getAsOpaquePtr())
       return QualType(T, 0);
 
-    return Ctx.getSubstTemplateTypeParmType(
-        replacementType, T->getReplacedDecl(), T->getIndex());
+    return Ctx.getSubstTemplateTypeParmType(replacementType,
+                                            T->getReplacedDecl(), T->getIndex(),
+                                            T->getPackIndex());
   }
 
   // FIXME: Non-trivial to implement, but important for C++
@@ -3712,9 +3713,9 @@ static const TemplateTypeParmDecl *getReplacedParameter(const Decl *D,
       getReplacedTemplateParameterList(D)->getParam(Index));
 }
 
-SubstTemplateTypeParmType::SubstTemplateTypeParmType(QualType Replacement,
-                                                     Decl *ReplacedDecl,
-                                                     unsigned Index)
+SubstTemplateTypeParmType::SubstTemplateTypeParmType(
+    QualType Replacement, Decl *ReplacedDecl, unsigned Index,
+    Optional<unsigned> PackIndex)
     : Type(SubstTemplateTypeParm, Replacement.getCanonicalType(),
            Replacement->getDependence()),
       ReplacedDecl(ReplacedDecl) {
@@ -3724,6 +3725,7 @@ SubstTemplateTypeParmType::SubstTemplateTypeParmType(QualType Replacement,
     *getTrailingObjects<QualType>() = Replacement;
 
   SubstTemplateTypeParmTypeBits.Index = Index;
+  SubstTemplateTypeParmTypeBits.PackIndex = PackIndex ? *PackIndex + 1 : 0;
   assert(ReplacedDecl != nullptr);
   assert(getReplacedParameter() != nullptr);
 }
