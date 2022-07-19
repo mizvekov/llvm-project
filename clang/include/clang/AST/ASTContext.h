@@ -1366,6 +1366,7 @@ public:
   CanQualType getDecayedType(CanQualType T) const {
     return CanQualType::CreateUnsafe(getDecayedType((QualType) T));
   }
+  QualType getDecayedType(QualType T, QualType Decayed) const;
 
   /// Return the uniqued reference to the atomic type for the specified
   /// type.
