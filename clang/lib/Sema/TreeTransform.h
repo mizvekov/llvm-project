@@ -4852,7 +4852,8 @@ QualType TreeTransform<Derived>::RebuildQualifiedType(QualType T,
         Replacement = SemaRef.Context.getQualifiedType(
             Replacement.getUnqualifiedType(), Qs);
         T = SemaRef.Context.getSubstTemplateTypeParmType(
-            SubstTypeParam->getReplacedParameter(), Replacement);
+            Replacement, SubstTypeParam->getReplacedDecl(),
+            SubstTypeParam->getIndex());
       } else if ((AutoTy = dyn_cast<AutoType>(T)) && AutoTy->isDeduced()) {
         // 'auto' types behave the same way as template parameters.
         QualType Deduced = AutoTy->getDeducedType();
@@ -6399,6 +6400,9 @@ QualType TreeTransform<Derived>::TransformSubstTemplateTypeParmType(
                                          SubstTemplateTypeParmTypeLoc TL) {
   const SubstTemplateTypeParmType *T = TL.getTypePtr();
 
+  Decl *NewReplaced =
+      getDerived().TransformDecl(TL.getNameLoc(), T->getReplacedDecl());
+
   // Substitute into the replacement type, which itself might involve something
   // that needs to be transformed. This only tends to occur with default
   // template arguments of template template parameters.
@@ -6409,9 +6413,8 @@ QualType TreeTransform<Derived>::TransformSubstTemplateTypeParmType(
 
   // Always canonicalize the replacement type.
   Replacement = SemaRef.Context.getCanonicalType(Replacement);
-  QualType Result
-    = SemaRef.Context.getSubstTemplateTypeParmType(T->getReplacedParameter(),
-                                                   Replacement);
+  QualType Result = SemaRef.Context.getSubstTemplateTypeParmType(
+      Replacement, NewReplaced, T->getIndex());
 
   // Propagate type-source information.
   SubstTemplateTypeParmTypeLoc NewTL

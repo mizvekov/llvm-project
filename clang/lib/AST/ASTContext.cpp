@@ -4749,21 +4749,21 @@ QualType ASTContext::getBTFTagAttributedType(const BTFTypeTagAttr *BTFAttr,
 }
 
 /// Retrieve a substitution-result type.
-QualType
-ASTContext::getSubstTemplateTypeParmType(const TemplateTypeParmType *Parm,
-                                         QualType Replacement) const {
+QualType ASTContext::getSubstTemplateTypeParmType(QualType Replacement,
+                                                  Decl *ReplacedDecl,
+                                                  unsigned Index) const {
   assert(Replacement.isCanonical()
          && "replacement types must always be canonical");
 
   llvm::FoldingSetNodeID ID;
-  SubstTemplateTypeParmType::Profile(ID, Parm, Replacement);
+  SubstTemplateTypeParmType::Profile(ID, Replacement, ReplacedDecl, Index);
   void *InsertPos = nullptr;
-  SubstTemplateTypeParmType *SubstParm
-    = SubstTemplateTypeParmTypes.FindNodeOrInsertPos(ID, InsertPos);
+  SubstTemplateTypeParmType *SubstParm =
+      SubstTemplateTypeParmTypes.FindNodeOrInsertPos(ID, InsertPos);
 
   if (!SubstParm) {
     SubstParm = new (*this, TypeAlignment)
-      SubstTemplateTypeParmType(Parm, Replacement);
+        SubstTemplateTypeParmType(Replacement, ReplacedDecl, Index);
     Types.push_back(SubstParm);
     SubstTemplateTypeParmTypes.InsertNode(SubstParm, InsertPos);
   }
@@ -4772,34 +4772,32 @@ ASTContext::getSubstTemplateTypeParmType(const TemplateTypeParmType *Parm,
 }
 
 /// Retrieve a
-QualType ASTContext::getSubstTemplateTypeParmPackType(
-                                          const TemplateTypeParmType *Parm,
-                                              const TemplateArgument &ArgPack) {
+QualType
+ASTContext::getSubstTemplateTypeParmPackType(Decl *ReplacedDecl, unsigned Index,
+                                             const TemplateArgument &ArgPack) {
 #ifndef NDEBUG
   for (const auto &P : ArgPack.pack_elements()) {
-    assert(P.getKind() == TemplateArgument::Type &&"Pack contains a non-type");
+    assert(P.getKind() == TemplateArgument::Type && "Pack contains a non-type");
     assert(P.getAsType().isCanonical() && "Pack contains non-canonical type");
   }
 #endif
 
   llvm::FoldingSetNodeID ID;
-  SubstTemplateTypeParmPackType::Profile(ID, Parm, ArgPack);
+  SubstTemplateTypeParmPackType::Profile(ID, ReplacedDecl, Index, ArgPack);
   void *InsertPos = nullptr;
-  if (SubstTemplateTypeParmPackType *SubstParm
-        = SubstTemplateTypeParmPackTypes.FindNodeOrInsertPos(ID, InsertPos))
+  if (SubstTemplateTypeParmPackType *SubstParm =
+          SubstTemplateTypeParmPackTypes.FindNodeOrInsertPos(ID, InsertPos))
     return QualType(SubstParm, 0);
 
   QualType Canon;
-  if (!Parm->isCanonicalUnqualified()) {
-    Canon = getCanonicalType(QualType(Parm, 0));
-    Canon = getSubstTemplateTypeParmPackType(cast<TemplateTypeParmType>(Canon),
-                                             ArgPack);
+  if (!ReplacedDecl->isCanonicalDecl()) {
+    Canon = getSubstTemplateTypeParmPackType(ReplacedDecl->getCanonicalDecl(),
+                                             Index, ArgPack);
     SubstTemplateTypeParmPackTypes.FindNodeOrInsertPos(ID, InsertPos);
   }
 
-  auto *SubstParm
-    = new (*this, TypeAlignment) SubstTemplateTypeParmPackType(Parm, Canon,
-                                                               ArgPack);
+  auto *SubstParm = new (*this, TypeAlignment)
+      SubstTemplateTypeParmPackType(Canon, ReplacedDecl, Index, ArgPack);
   Types.push_back(SubstParm);
   SubstTemplateTypeParmPackTypes.InsertNode(SubstParm, InsertPos);
   return QualType(SubstParm, 0);
@@ -12809,12 +12807,14 @@ static QualType getCommonSugarTypeNode(ASTContext &Ctx, const Type *X,
   case Type::SubstTemplateTypeParm: {
     const auto *SX = cast<SubstTemplateTypeParmType>(X),
                *SY = cast<SubstTemplateTypeParmType>(Y);
-    const TemplateTypeParmType *PX = SX->getReplacedParameter();
-    if (PX != SY->getReplacedParameter())
+    unsigned Index = SX->getIndex();
+    if (Index != SY->getIndex())
       return QualType();
-
-    return Ctx.getSubstTemplateTypeParmType(PX,
-                                            Ctx.getQualifiedType(Underlying));
+    Decl *CD = ::getCommonDecl(SX->getReplacedDecl(), SY->getReplacedDecl());
+    if (!CD)
+      return QualType();
+    return Ctx.getSubstTemplateTypeParmType(Ctx.getQualifiedType(Underlying),
+                                            CD, Index);
   }
   case Type::ObjCTypeParam:
     // FIXME: Try to merge these.

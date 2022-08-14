@@ -327,8 +327,9 @@ bool Sema::CheckConstraintSatisfaction(
   // has no access to the MultiLevelTemplateArgumentList, so this has to happen
   // here.
   llvm::SmallVector<TemplateArgument, 4> FlattenedArgs;
-  for (ArrayRef<TemplateArgument> List : TemplateArgsLists)
-    FlattenedArgs.insert(FlattenedArgs.end(), List.begin(), List.end());
+  for (auto List : TemplateArgsLists)
+    FlattenedArgs.insert(FlattenedArgs.end(), List.Args.begin(),
+                         List.Args.end());
 
   llvm::FoldingSetNodeID ID;
   ConstraintSatisfaction::Profile(ID, Context, Template, FlattenedArgs);
@@ -435,7 +436,7 @@ bool Sema::CheckInstantiatedFunctionTemplateConstraints(
   MultiLevelTemplateArgumentList MLTAL;
   // FIXME: This will be replaced with some logic to get all the template
   // arguments when we switch to deferred template instantiation.
-  MLTAL.addOuterTemplateArguments(TemplateArgs);
+  MLTAL.addOuterTemplateArguments(Decl, TemplateArgs);
 
   // If this is not an explicit specialization - we need to get the instantiated
   // version of the template arguments and add them to scope for the
@@ -447,7 +448,7 @@ bool Sema::CheckInstantiatedFunctionTemplateConstraints(
     if (Inst.isInvalid())
       return true;
     MultiLevelTemplateArgumentList MLTAL(
-        *Decl->getTemplateSpecializationArgs());
+        Decl, Decl->getTemplateSpecializationArgs()->asArray());
     if (addInstantiatedParametersToScope(
             Decl, Decl->getPrimaryTemplate()->getTemplatedDecl(), Scope, MLTAL))
       return true;
@@ -749,7 +750,7 @@ static bool substituteParameterMappings(Sema &S, NormalizedConstraint &N,
   AtomicConstraint &Atomic = *N.getAtomicConstraint();
   TemplateArgumentListInfo SubstArgs;
   MultiLevelTemplateArgumentList MLTAL;
-  MLTAL.addOuterTemplateArguments(TemplateArgs);
+  MLTAL.addOuterTemplateArguments(Concept, TemplateArgs);
   if (!Atomic.ParameterMapping) {
     llvm::SmallBitVector OccurringIndices(TemplateParams->size());
     S.MarkUsedTemplateParameters(Atomic.ConstraintExpr, /*OnlyDeduced=*/false,

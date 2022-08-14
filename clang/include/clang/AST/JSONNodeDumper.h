@@ -220,6 +220,9 @@ public:
   void VisitUnaryTransformType(const UnaryTransformType *UTT);
   void VisitTagType(const TagType *TT);
   void VisitTemplateTypeParmType(const TemplateTypeParmType *TTPT);
+  void VisitSubstTemplateTypeParmType(const SubstTemplateTypeParmType *STTPT);
+  void
+  VisitSubstTemplateTypeParmPackType(const SubstTemplateTypeParmPackType *T);
   void VisitAutoType(const AutoType *AT);
   void VisitTemplateSpecializationType(const TemplateSpecializationType *TST);
   void VisitInjectedClassNameType(const InjectedClassNameType *ICNT);

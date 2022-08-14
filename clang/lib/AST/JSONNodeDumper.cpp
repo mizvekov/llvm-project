@@ -683,6 +683,16 @@ void JSONNodeDumper::VisitTemplateTypeParmType(
   JOS.attribute("decl", createBareDeclRef(TTPT->getDecl()));
 }
 
+void JSONNodeDumper::VisitSubstTemplateTypeParmType(
+    const SubstTemplateTypeParmType *STTPT) {
+  JOS.attribute("index", STTPT->getIndex());
+}
+
+void JSONNodeDumper::VisitSubstTemplateTypeParmPackType(
+    const SubstTemplateTypeParmPackType *T) {
+  JOS.attribute("index", T->getIndex());
+}
+
 void JSONNodeDumper::VisitAutoType(const AutoType *AT) {
   JOS.attribute("undeduced", !AT->isDeduced());
   switch (AT->getKeyword()) {

@@ -728,18 +728,20 @@ let Class = TemplateTypeParmType in {
 }
 
 let Class = SubstTemplateTypeParmType in {
-  def : Property<"replacedParameter", QualType> {
-    let Read = [{ QualType(node->getReplacedParameter(), 0) }];
-  }
   def : Property<"replacementType", QualType> {
     let Read = [{ node->getReplacementType() }];
   }
+  def : Property<"replacedDecl", DeclRef> {
+    let Read = [{ node->getReplacedDecl() }];
+  }
+  def : Property<"Index", UInt32> {
+    let Read = [{ node->getIndex() }];
+  }
 
+  // The call to getCanonicalType here existed in ASTReader.cpp, too.
   def : Creator<[{
-    // The call to getCanonicalType here existed in ASTReader.cpp, too.
     return ctx.getSubstTemplateTypeParmType(
-        cast<TemplateTypeParmType>(replacedParameter),
-        ctx.getCanonicalType(replacementType));
+        ctx.getCanonicalType(replacementType), replacedDecl, Index);
   }]>;
 }
 
@@ -758,8 +760,11 @@ let Class = PackExpansionType in {
 }
 
 let Class = SubstTemplateTypeParmPackType in {
-  def : Property<"replacedParameter", QualType> {
-    let Read = [{ QualType(node->getReplacedParameter(), 0) }];
+  def : Property<"replacedDecl", DeclRef> {
+    let Read = [{ node->getReplacedDecl() }];
+  }
+  def : Property<"Index", UInt32> {
+    let Read = [{ node->getIndex() }];
   }
   def : Property<"replacementPack", TemplateArgument> {
     let Read = [{ node->getArgumentPack() }];
@@ -767,8 +772,7 @@ let Class = SubstTemplateTypeParmPackType in {
 
   def : Creator<[{
     return ctx.getSubstTemplateTypeParmPackType(
-                         cast<TemplateTypeParmType>(replacedParameter),
-                        replacementPack);
+                        replacedDecl, Index, replacementPack);
   }]>;
 }
 

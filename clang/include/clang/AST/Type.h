@@ -1793,19 +1793,28 @@ protected:
     unsigned NumArgs;
   };
 
+  class SubstTemplateTypeParmTypeBitfields {
+    friend class SubstTemplateTypeParmType;
+
+    unsigned : NumTypeBits;
+
+    // The index of the template parameter this substitution represents.
+    unsigned Index;
+  };
+
   class SubstTemplateTypeParmPackTypeBitfields {
     friend class SubstTemplateTypeParmPackType;
 
     unsigned : NumTypeBits;
 
+    // The index of the template parameter this substitution represents.
+    unsigned Index : 16;
+
     /// The number of template arguments in \c Arguments, which is
     /// expected to be able to hold at least 1024 according to [implimits].
     /// However as this limit is somewhat easy to hit with template
     /// metaprogramming we'd prefer to keep it as large as possible.
-    /// At the moment it has been left as a non-bitfield since this type
-    /// safely fits in 64 bits as an unsigned, so there is no reason to
-    /// introduce the performance impact of a bitfield.
-    unsigned NumArgs;
+    unsigned NumArgs : 16;
   };
 
   class TemplateSpecializationTypeBitfields {
@@ -1874,6 +1883,7 @@ protected:
     TypeWithKeywordBitfields TypeWithKeywordBits;
     ElaboratedTypeBitfields ElaboratedTypeBits;
     VectorTypeBitfields VectorTypeBits;
+    SubstTemplateTypeParmTypeBitfields SubstTemplateTypeParmTypeBits;
     SubstTemplateTypeParmPackTypeBitfields SubstTemplateTypeParmPackTypeBits;
     TemplateSpecializationTypeBitfields TemplateSpecializationTypeBits;
     DependentTemplateSpecializationTypeBitfields
@@ -4974,37 +4984,35 @@ public:
 class SubstTemplateTypeParmType : public Type, public llvm::FoldingSetNode {
   friend class ASTContext;
 
-  // The original type parameter.
-  const TemplateTypeParmType *Replaced;
+  Decl *ReplacedDecl;
 
-  SubstTemplateTypeParmType(const TemplateTypeParmType *Param, QualType Canon)
-      : Type(SubstTemplateTypeParm, Canon, Canon->getDependence()),
-        Replaced(Param) {}
+  SubstTemplateTypeParmType(QualType Replacement, Decl *ReplacedDecl,
+                            unsigned Index);
 
 public:
-  /// Gets the template parameter that was substituted for.
-  const TemplateTypeParmType *getReplacedParameter() const {
-    return Replaced;
-  }
-
   /// Gets the type that was substituted for the template
   /// parameter.
-  QualType getReplacementType() const {
-    return getCanonicalTypeInternal();
-  }
+  QualType getReplacementType() const { return getCanonicalTypeInternal(); }
+
+  /// Gets the templated entity that was substituted.
+  Decl *getReplacedDecl() const { return ReplacedDecl; }
+
+  const TemplateTypeParmDecl *getReplacedParameter() const;
+
+  unsigned getIndex() const { return SubstTemplateTypeParmTypeBits.Index; }
 
   bool isSugared() const { return true; }
   QualType desugar() const { return getReplacementType(); }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
-    Profile(ID, getReplacedParameter(), getReplacementType());
+    Profile(ID, getReplacementType(), getReplacedDecl(), getIndex());
   }
 
-  static void Profile(llvm::FoldingSetNodeID &ID,
-                      const TemplateTypeParmType *Replaced,
-                      QualType Replacement) {
-    ID.AddPointer(Replaced);
+  static void Profile(llvm::FoldingSetNodeID &ID, QualType Replacement,
+                      const Decl *ReplacedDecl, unsigned Index) {
+    ID.AddPointer(ReplacedDecl);
     ID.AddPointer(Replacement.getAsOpaquePtr());
+    ID.AddInteger(Index);
   }
 
   static bool classof(const Type *T) {
@@ -5027,24 +5035,25 @@ public:
 class SubstTemplateTypeParmPackType : public Type, public llvm::FoldingSetNode {
   friend class ASTContext;
 
-  /// The original type parameter.
-  const TemplateTypeParmType *Replaced;
-
   /// A pointer to the set of template arguments that this
   /// parameter pack is instantiated with.
   const TemplateArgument *Arguments;
 
-  SubstTemplateTypeParmPackType(const TemplateTypeParmType *Param,
-                                QualType Canon,
+  Decl *ReplacedDecl;
+
+  SubstTemplateTypeParmPackType(QualType Canon, Decl *ReplacedDecl,
+                                unsigned Index,
                                 const TemplateArgument &ArgPack);
 
 public:
-  IdentifierInfo *getIdentifier() const { return Replaced->getIdentifier(); }
+  IdentifierInfo *getIdentifier() const;
 
-  /// Gets the template parameter that was substituted for.
-  const TemplateTypeParmType *getReplacedParameter() const {
-    return Replaced;
-  }
+  /// Gets the templated entity that was substituted.
+  Decl *getReplacedDecl() const { return ReplacedDecl; }
+
+  const TemplateTypeParmDecl *getReplacedParameter() const;
+
+  unsigned getIndex() const { return SubstTemplateTypeParmPackTypeBits.Index; }
 
   unsigned getNumArgs() const {
     return SubstTemplateTypeParmPackTypeBits.NumArgs;
@@ -5056,9 +5065,8 @@ public:
   TemplateArgument getArgumentPack() const;
 
   void Profile(llvm::FoldingSetNodeID &ID);
-  static void Profile(llvm::FoldingSetNodeID &ID,
-                      const TemplateTypeParmType *Replaced,
-                      const TemplateArgument &ArgPack);
+  static void Profile(llvm::FoldingSetNodeID &ID, const Decl *ReplacedDecl,
+                      unsigned Index, const TemplateArgument &ArgPack);
 
   static bool classof(const Type *T) {
     return T->getTypeClass() == SubstTemplateTypeParmPack;

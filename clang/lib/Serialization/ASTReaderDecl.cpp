@@ -886,75 +886,18 @@ void ASTDeclReader::VisitDeclaratorDecl(DeclaratorDecl *DD) {
 
 void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
   RedeclarableResult Redecl = VisitRedeclarable(FD);
-  VisitDeclaratorDecl(FD);
 
-  // Attach a type to this function. Use the real type if possible, but fall
-  // back to the type as written if it involves a deduced return type.
-  if (FD->getTypeSourceInfo() &&
-      FD->getTypeSourceInfo()->getType()->castAs<FunctionType>()
-                             ->getReturnType()->getContainedAutoType()) {
-    // We'll set up the real type in Visit, once we've finished loading the
-    // function.
-    FD->setType(FD->getTypeSourceInfo()->getType());
-    Reader.PendingFunctionTypes.push_back({FD, DeferredTypeID});
-  } else {
-    FD->setType(Reader.GetType(DeferredTypeID));
-  }
-  DeferredTypeID = 0;
-
-  FD->DNLoc = Record.readDeclarationNameLoc(FD->getDeclName());
-  FD->IdentifierNamespace = Record.readInt();
-
-  // FunctionDecl's body is handled last at ASTDeclReader::Visit,
-  // after everything else is read.
-
-  FD->setStorageClass(static_cast<StorageClass>(Record.readInt()));
-  FD->setInlineSpecified(Record.readInt());
-  FD->setImplicitlyInline(Record.readInt());
-  FD->setVirtualAsWritten(Record.readInt());
-  // We defer calling `FunctionDecl::setPure()` here as for methods of
-  // `CXXTemplateSpecializationDecl`s, we may not have connected up the
-  // definition (which is required for `setPure`).
-  const bool Pure = Record.readInt();
-  FD->setHasInheritedPrototype(Record.readInt());
-  FD->setHasWrittenPrototype(Record.readInt());
-  FD->setDeletedAsWritten(Record.readInt());
-  FD->setTrivial(Record.readInt());
-  FD->setTrivialForCall(Record.readInt());
-  FD->setDefaulted(Record.readInt());
-  FD->setExplicitlyDefaulted(Record.readInt());
-  FD->setHasImplicitReturnZero(Record.readInt());
-  FD->setConstexprKind(static_cast<ConstexprSpecKind>(Record.readInt()));
-  FD->setUsesSEHTry(Record.readInt());
-  FD->setHasSkippedBody(Record.readInt());
-  FD->setIsMultiVersion(Record.readInt());
-  FD->setLateTemplateParsed(Record.readInt());
-
-  FD->setCachedLinkage(static_cast<Linkage>(Record.readInt()));
-  FD->EndRangeLoc = readSourceLocation();
-
-  FD->ODRHash = Record.readInt();
-  FD->setHasODRHash(true);
-
-  if (FD->isDefaulted()) {
-    if (unsigned NumLookups = Record.readInt()) {
-      SmallVector<DeclAccessPair, 8> Lookups;
-      for (unsigned I = 0; I != NumLookups; ++I) {
-        NamedDecl *ND = Record.readDeclAs<NamedDecl>();
-        AccessSpecifier AS = (AccessSpecifier)Record.readInt();
-        Lookups.push_back(DeclAccessPair::make(ND, AS));
-      }
-      FD->setDefaultedFunctionInfo(FunctionDecl::DefaultedFunctionInfo::Create(
-          Reader.getContext(), Lookups));
-    }
-  }
+  struct {
+    bool DoIt;
+    FunctionDecl *Existing = nullptr;
+  } Merge = {false};
 
   switch ((FunctionDecl::TemplatedKind)Record.readInt()) {
   case FunctionDecl::TK_NonTemplate:
-    mergeRedeclarable(FD, Redecl);
+    Merge = {true};
     break;
   case FunctionDecl::TK_DependentNonTemplate:
-    mergeRedeclarable(FD, Redecl);
+    Merge = {true};
     FD->setInstantiatedFromDecl(readDeclAs<FunctionDecl>());
     break;
   case FunctionDecl::TK_FunctionTemplate:
@@ -967,7 +910,7 @@ void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
     SourceLocation POI = readSourceLocation();
     FD->setInstantiationOfMemberFunction(Reader.getContext(), InstFD, TSK);
     FD->getMemberSpecializationInfo()->setPointOfInstantiation(POI);
-    mergeRedeclarable(FD, Redecl);
+    Merge = {true};
     break;
   }
   case FunctionDecl::TK_FunctionTemplateSpecialization: {
@@ -1038,7 +981,7 @@ void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
       else {
         assert(Reader.getContext().getLangOpts().Modules &&
                "already deserialized this template specialization");
-        mergeRedeclarable(FD, ExistingInfo->getFunction(), Redecl);
+        Merge = {true, ExistingInfo->getFunction()};
       }
     }
     break;
@@ -1064,6 +1007,78 @@ void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
     // template friends.
     break;
   }
+  }
+
+  VisitDeclaratorDecl(FD);
+
+  // Attach a type to this function. Use the real type if possible, but fall
+  // back to the type as written if it involves a deduced return type.
+  if (FD->getTypeSourceInfo() && FD->getTypeSourceInfo()
+                                     ->getType()
+                                     ->castAs<FunctionType>()
+                                     ->getReturnType()
+                                     ->getContainedAutoType()) {
+    // We'll set up the real type in Visit, once we've finished loading the
+    // function.
+    FD->setType(FD->getTypeSourceInfo()->getType());
+    Reader.PendingFunctionTypes.push_back({FD, DeferredTypeID});
+  } else {
+    FD->setType(Reader.GetType(DeferredTypeID));
+  }
+  DeferredTypeID = 0;
+
+  FD->DNLoc = Record.readDeclarationNameLoc(FD->getDeclName());
+  FD->IdentifierNamespace = Record.readInt();
+
+  // FunctionDecl's body is handled last at ASTDeclReader::Visit,
+  // after everything else is read.
+
+  FD->setStorageClass(static_cast<StorageClass>(Record.readInt()));
+  FD->setInlineSpecified(Record.readInt());
+  FD->setImplicitlyInline(Record.readInt());
+  FD->setVirtualAsWritten(Record.readInt());
+  // We defer calling `FunctionDecl::setPure()` here as for methods of
+  // `CXXTemplateSpecializationDecl`s, we may not have connected up the
+  // definition (which is required for `setPure`).
+  const bool Pure = Record.readInt();
+  FD->setHasInheritedPrototype(Record.readInt());
+  FD->setHasWrittenPrototype(Record.readInt());
+  FD->setDeletedAsWritten(Record.readInt());
+  FD->setTrivial(Record.readInt());
+  FD->setTrivialForCall(Record.readInt());
+  FD->setDefaulted(Record.readInt());
+  FD->setExplicitlyDefaulted(Record.readInt());
+  FD->setHasImplicitReturnZero(Record.readInt());
+  FD->setConstexprKind(static_cast<ConstexprSpecKind>(Record.readInt()));
+  FD->setUsesSEHTry(Record.readInt());
+  FD->setHasSkippedBody(Record.readInt());
+  FD->setIsMultiVersion(Record.readInt());
+  FD->setLateTemplateParsed(Record.readInt());
+
+  FD->setCachedLinkage(static_cast<Linkage>(Record.readInt()));
+  FD->EndRangeLoc = readSourceLocation();
+
+  FD->ODRHash = Record.readInt();
+  FD->setHasODRHash(true);
+
+  if (FD->isDefaulted()) {
+    if (unsigned NumLookups = Record.readInt()) {
+      SmallVector<DeclAccessPair, 8> Lookups;
+      for (unsigned I = 0; I != NumLookups; ++I) {
+        NamedDecl *ND = Record.readDeclAs<NamedDecl>();
+        AccessSpecifier AS = (AccessSpecifier)Record.readInt();
+        Lookups.push_back(DeclAccessPair::make(ND, AS));
+      }
+      FD->setDefaultedFunctionInfo(FunctionDecl::DefaultedFunctionInfo::Create(
+          Reader.getContext(), Lookups));
+    }
+  }
+
+  if (Merge.DoIt) {
+    if (Merge.Existing)
+      mergeRedeclarable(FD, Merge.Existing, Redecl);
+    else
+      mergeRedeclarable(FD, Redecl);
   }
 
   // Defer calling `setPure` until merging above has guaranteed we've set
@@ -2390,8 +2405,6 @@ void ASTDeclReader::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
 ASTDeclReader::RedeclarableResult
 ASTDeclReader::VisitVarTemplateSpecializationDeclImpl(
     VarTemplateSpecializationDecl *D) {
-  RedeclarableResult Redecl = VisitVarDeclImpl(D);
-
   ASTContext &C = Reader.getContext();
   if (Decl *InstD = readDecl()) {
     if (auto *VTD = dyn_cast<VarTemplateDecl>(InstD)) {
@@ -2427,6 +2440,8 @@ ASTDeclReader::VisitVarTemplateSpecializationDeclImpl(
   D->PointOfInstantiation = readSourceLocation();
   D->SpecializationKind = (TemplateSpecializationKind)Record.readInt();
   D->IsCompleteDefinition = Record.readInt();
+
+  RedeclarableResult Redecl = VisitVarDeclImpl(D);
 
   bool writtenAsCanonicalDecl = Record.readInt();
   if (writtenAsCanonicalDecl) {

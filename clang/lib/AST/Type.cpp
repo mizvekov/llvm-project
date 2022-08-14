@@ -1166,8 +1166,8 @@ public:
           == T->getReplacementType().getAsOpaquePtr())
       return QualType(T, 0);
 
-    return Ctx.getSubstTemplateTypeParmType(T->getReplacedParameter(),
-                                            replacementType);
+    return Ctx.getSubstTemplateTypeParmType(
+        replacementType, T->getReplacedDecl(), T->getIndex());
   }
 
   // FIXME: Non-trivial to implement, but important for C++
@@ -3649,14 +3649,105 @@ IdentifierInfo *TemplateTypeParmType::getIdentifier() const {
   return isCanonicalUnqualified() ? nullptr : getDecl()->getIdentifier();
 }
 
+static const TemplateParameterList *
+getReplacedTemplateParameterList(const Decl *D) {
+  switch (D->getKind()) {
+  case Decl::Kind::ClassTemplate:
+    return cast<ClassTemplateDecl>(D)->getTemplateParameters();
+  case Decl::Kind::ClassTemplateSpecialization: {
+    const auto *CTSD = cast<ClassTemplateSpecializationDecl>(D);
+    auto P = CTSD->getSpecializedTemplateOrPartial();
+    if (const auto *CTPSD =
+            P.dyn_cast<ClassTemplatePartialSpecializationDecl *>())
+      return CTPSD->getTemplateParameters();
+    return cast<ClassTemplateDecl *>(P)->getTemplateParameters();
+  }
+  case Decl::Kind::ClassTemplatePartialSpecialization:
+    return cast<ClassTemplatePartialSpecializationDecl>(D)
+        ->getTemplateParameters();
+  case Decl::Kind::TypeAliasTemplate:
+    return cast<TypeAliasTemplateDecl>(D)->getTemplateParameters();
+  case Decl::Kind::BuiltinTemplate:
+    return cast<BuiltinTemplateDecl>(D)->getTemplateParameters();
+  case Decl::Kind::CXXDeductionGuide:
+  case Decl::Kind::CXXConversion:
+  case Decl::Kind::CXXConstructor:
+  case Decl::Kind::CXXDestructor:
+  case Decl::Kind::CXXMethod:
+  case Decl::Kind::Function:
+    return cast<FunctionDecl>(D)
+        ->getTemplateSpecializationInfo()
+        ->getTemplate()
+        ->getTemplateParameters();
+  case Decl::Kind::FunctionTemplate:
+    return cast<FunctionTemplateDecl>(D)->getTemplateParameters();
+  case Decl::Kind::VarTemplate:
+    return cast<VarTemplateDecl>(D)->getTemplateParameters();
+  case Decl::Kind::VarTemplateSpecialization: {
+    const auto *VTSD = cast<VarTemplateSpecializationDecl>(D);
+    auto P = VTSD->getSpecializedTemplateOrPartial();
+    if (const auto *VTPSD =
+            P.dyn_cast<VarTemplatePartialSpecializationDecl *>())
+      return VTPSD->getTemplateParameters();
+    return cast<VarTemplateDecl *>(P)->getTemplateParameters();
+  }
+  case Decl::Kind::VarTemplatePartialSpecialization:
+    return cast<VarTemplatePartialSpecializationDecl>(D)
+        ->getTemplateParameters();
+  case Decl::Kind::TemplateTemplateParm:
+    return cast<TemplateTemplateParmDecl>(D)->getTemplateParameters();
+  case Decl::Kind::Concept:
+    return cast<ConceptDecl>(D)->getTemplateParameters();
+  default:
+    D->dumpColor();
+    llvm_unreachable("Unhandled templated declaration kind");
+  }
+}
+
+static const TemplateTypeParmDecl *getReplacedParameter(const Decl *D,
+                                                        unsigned Index) {
+  if (const auto *TTP = dyn_cast<TemplateTypeParmDecl>(D))
+    return TTP;
+  return cast<TemplateTypeParmDecl>(
+      getReplacedTemplateParameterList(D)->getParam(Index));
+}
+
+SubstTemplateTypeParmType::SubstTemplateTypeParmType(QualType Replacement,
+                                                     Decl *ReplacedDecl,
+                                                     unsigned Index)
+    : Type(SubstTemplateTypeParm, Replacement.getCanonicalType(),
+           Replacement->getDependence()),
+      ReplacedDecl(ReplacedDecl) {
+  SubstTemplateTypeParmTypeBits.Index = Index;
+  assert(ReplacedDecl != nullptr);
+  assert(getReplacedParameter() != nullptr);
+}
+
+const TemplateTypeParmDecl *
+SubstTemplateTypeParmType::getReplacedParameter() const {
+  return ::getReplacedParameter(getReplacedDecl(), getIndex());
+}
+
 SubstTemplateTypeParmPackType::SubstTemplateTypeParmPackType(
-    const TemplateTypeParmType *Param, QualType Canon,
+    QualType Canon, Decl *ReplacedDecl, unsigned Index,
     const TemplateArgument &ArgPack)
     : Type(SubstTemplateTypeParmPack, Canon,
            TypeDependence::DependentInstantiation |
                TypeDependence::UnexpandedPack),
-      Replaced(Param), Arguments(ArgPack.pack_begin()) {
+      Arguments(ArgPack.pack_begin()), ReplacedDecl(ReplacedDecl) {
+  SubstTemplateTypeParmPackTypeBits.Index = Index;
   SubstTemplateTypeParmPackTypeBits.NumArgs = ArgPack.pack_size();
+  assert(ReplacedDecl != nullptr);
+  assert(getReplacedParameter() != nullptr);
+}
+
+const TemplateTypeParmDecl *
+SubstTemplateTypeParmPackType::getReplacedParameter() const {
+  return ::getReplacedParameter(getReplacedDecl(), getIndex());
+}
+
+IdentifierInfo *SubstTemplateTypeParmPackType::getIdentifier() const {
+  return getReplacedParameter()->getIdentifier();
 }
 
 TemplateArgument SubstTemplateTypeParmPackType::getArgumentPack() const {
@@ -3664,13 +3755,15 @@ TemplateArgument SubstTemplateTypeParmPackType::getArgumentPack() const {
 }
 
 void SubstTemplateTypeParmPackType::Profile(llvm::FoldingSetNodeID &ID) {
-  Profile(ID, getReplacedParameter(), getArgumentPack());
+  Profile(ID, getReplacedDecl(), getIndex(), getArgumentPack());
 }
 
 void SubstTemplateTypeParmPackType::Profile(llvm::FoldingSetNodeID &ID,
-                                           const TemplateTypeParmType *Replaced,
+                                            const Decl *ReplacedDecl,
+                                            unsigned Index,
                                             const TemplateArgument &ArgPack) {
-  ID.AddPointer(Replaced);
+  ID.AddPointer(ReplacedDecl);
+  ID.AddInteger(Index);
   ID.AddInteger(ArgPack.pack_size());
   for (const auto &P : ArgPack.pack_elements())
     ID.AddPointer(P.getAsType().getAsOpaquePtr());

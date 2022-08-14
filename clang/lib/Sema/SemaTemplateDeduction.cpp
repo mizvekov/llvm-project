@@ -2673,7 +2673,7 @@ ConvertDeducedTemplateArgument(Sema &S, NamedDecl *Param,
     if (PackedArgsBuilder.empty()) {
       LocalInstantiationScope Scope(S);
       TemplateArgumentList TemplateArgs(TemplateArgumentList::OnStack, Output);
-      MultiLevelTemplateArgumentList Args(TemplateArgs);
+      MultiLevelTemplateArgumentList Args(Template, TemplateArgs.asArray());
 
       if (auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(Param)) {
         Sema::InstantiatingTemplate Inst(S, Template->getLocation(), Template,
@@ -2845,7 +2845,7 @@ CheckDeducedArgumentConstraints(Sema& S, TemplateDeclT *Template,
   // FIXME: This will change quite a bit once deferred concept instantiation is
   // implemented.
   MultiLevelTemplateArgumentList MLTAL;
-  MLTAL.addOuterTemplateArguments(DeducedArgs);
+  MLTAL.addOuterTemplateArguments(Template, DeducedArgs);
 
   if (S.CheckConstraintSatisfaction(Template, AssociatedConstraints,
                                     MLTAL, Info.getLocation(),
@@ -2900,9 +2900,10 @@ FinishTemplateArgumentDeduction(
   TemplateArgumentListInfo InstArgs(PartialTemplArgInfo->LAngleLoc,
                                     PartialTemplArgInfo->RAngleLoc);
 
-  if (S.SubstTemplateArguments(
-          PartialTemplArgInfo->arguments(),
-          MultiLevelTemplateArgumentList(*DeducedArgumentList), InstArgs)) {
+  if (S.SubstTemplateArguments(PartialTemplArgInfo->arguments(),
+                               MultiLevelTemplateArgumentList(
+                                   Partial, DeducedArgumentList->asArray()),
+                               InstArgs)) {
     unsigned ArgIdx = InstArgs.size(), ParamIdx = ArgIdx;
     if (ParamIdx >= Partial->getTemplateParameters()->size())
       ParamIdx = Partial->getTemplateParameters()->size() - 1;
@@ -3239,7 +3240,8 @@ Sema::SubstituteExplicitTemplateArguments(
   if (Proto->hasTrailingReturn()) {
     if (SubstParmTypes(Function->getLocation(), Function->parameters(),
                        Proto->getExtParameterInfosOrNull(),
-                       MultiLevelTemplateArgumentList(*ExplicitArgumentList),
+                       MultiLevelTemplateArgumentList(
+                           FunctionTemplate, ExplicitArgumentList->asArray()),
                        ParamTypes, /*params*/ nullptr, ExtParamInfos))
       return TDK_SubstitutionFailure;
   }
@@ -3265,7 +3267,8 @@ Sema::SubstituteExplicitTemplateArguments(
 
     ResultType =
         SubstType(Proto->getReturnType(),
-                  MultiLevelTemplateArgumentList(*ExplicitArgumentList),
+                  MultiLevelTemplateArgumentList(
+                      FunctionTemplate, ExplicitArgumentList->asArray()),
                   Function->getTypeSpecStartLoc(), Function->getDeclName());
     if (ResultType.isNull() || Trap.hasErrorOccurred())
       return TDK_SubstitutionFailure;
@@ -3283,7 +3286,8 @@ Sema::SubstituteExplicitTemplateArguments(
   if (!Proto->hasTrailingReturn() &&
       SubstParmTypes(Function->getLocation(), Function->parameters(),
                      Proto->getExtParameterInfosOrNull(),
-                     MultiLevelTemplateArgumentList(*ExplicitArgumentList),
+                     MultiLevelTemplateArgumentList(
+                         FunctionTemplate, ExplicitArgumentList->asArray()),
                      ParamTypes, /*params*/ nullptr, ExtParamInfos))
     return TDK_SubstitutionFailure;
 
@@ -3298,7 +3302,8 @@ Sema::SubstituteExplicitTemplateArguments(
     if (getLangOpts().CPlusPlus17 &&
         SubstExceptionSpec(
             Function->getLocation(), EPI.ExceptionSpec, ExceptionStorage,
-            MultiLevelTemplateArgumentList(*ExplicitArgumentList)))
+            MultiLevelTemplateArgumentList(FunctionTemplate,
+                                           ExplicitArgumentList->asArray())))
       return TDK_SubstitutionFailure;
 
     *FunctionType = BuildFunctionType(ResultType, ParamTypes,
@@ -3538,7 +3543,8 @@ Sema::TemplateDeductionResult Sema::FinishTemplateArgumentDeduction(
   DeclContext *Owner = FunctionTemplate->getDeclContext();
   if (FunctionTemplate->getFriendObjectKind())
     Owner = FunctionTemplate->getLexicalDeclContext();
-  MultiLevelTemplateArgumentList SubstArgs(*DeducedArgumentList);
+  MultiLevelTemplateArgumentList SubstArgs(FunctionTemplate,
+                                           DeducedArgumentList->asArray());
   Specialization = cast_or_null<FunctionDecl>(
       SubstDecl(FunctionTemplate->getTemplatedDecl(), Owner, SubstArgs));
   if (!Specialization || Specialization->isInvalidDecl())
@@ -4595,7 +4601,7 @@ static bool CheckDeducedPlaceholderConstraints(Sema &S, const AutoType &Type,
                                   /*PartialTemplateArgs=*/false, Converted))
     return true;
   MultiLevelTemplateArgumentList MLTAL;
-  MLTAL.addOuterTemplateArguments(Converted);
+  MLTAL.addOuterTemplateArguments(Concept, Converted);
   if (S.CheckConstraintSatisfaction(Concept, {Concept->getConstraintExpr()},
                                     MLTAL, TypeLoc.getLocalSourceRange(),
                                     Satisfaction))
@@ -5867,9 +5873,8 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   case Type::SubstTemplateTypeParmPack: {
     const SubstTemplateTypeParmPackType *Subst
       = cast<SubstTemplateTypeParmPackType>(T);
-    MarkUsedTemplateParameters(Ctx,
-                               QualType(Subst->getReplacedParameter(), 0),
-                               OnlyDeduced, Depth, Used);
+    if (Subst->getReplacedParameter()->getDepth() == Depth)
+      Used[Subst->getIndex()] = true;
     MarkUsedTemplateParameters(Ctx, Subst->getArgumentPack(),
                                OnlyDeduced, Depth, Used);
     break;

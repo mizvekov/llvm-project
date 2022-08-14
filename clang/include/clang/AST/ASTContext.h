@@ -1614,10 +1614,10 @@ public:
   QualType getBTFTagAttributedType(const BTFTypeTagAttr *BTFAttr,
                                    QualType Wrapped);
 
-  QualType getSubstTemplateTypeParmType(const TemplateTypeParmType *Replaced,
-                                        QualType Replacement) const;
-  QualType getSubstTemplateTypeParmPackType(
-                                          const TemplateTypeParmType *Replaced,
+  QualType getSubstTemplateTypeParmType(QualType Replacement,
+                                        Decl *ReplacedDecl,
+                                        unsigned Index) const;
+  QualType getSubstTemplateTypeParmPackType(Decl *ReplacedDecl, unsigned Index,
                                             const TemplateArgument &ArgPack);
 
   QualType

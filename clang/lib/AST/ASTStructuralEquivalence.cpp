@@ -1055,12 +1055,13 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   case Type::SubstTemplateTypeParm: {
     const auto *Subst1 = cast<SubstTemplateTypeParmType>(T1);
     const auto *Subst2 = cast<SubstTemplateTypeParmType>(T2);
-    if (!IsStructurallyEquivalent(Context,
-                                  QualType(Subst1->getReplacedParameter(), 0),
-                                  QualType(Subst2->getReplacedParameter(), 0)))
-      return false;
     if (!IsStructurallyEquivalent(Context, Subst1->getReplacementType(),
                                   Subst2->getReplacementType()))
+      return false;
+    if (!IsStructurallyEquivalent(Context, Subst1->getReplacedDecl(),
+                                  Subst2->getReplacedDecl()))
+      return false;
+    if (Subst1->getIndex() != Subst2->getIndex())
       return false;
     break;
   }
@@ -1068,9 +1069,10 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   case Type::SubstTemplateTypeParmPack: {
     const auto *Subst1 = cast<SubstTemplateTypeParmPackType>(T1);
     const auto *Subst2 = cast<SubstTemplateTypeParmPackType>(T2);
-    if (!IsStructurallyEquivalent(Context,
-                                  QualType(Subst1->getReplacedParameter(), 0),
-                                  QualType(Subst2->getReplacedParameter(), 0)))
+    if (!IsStructurallyEquivalent(Context, Subst1->getReplacedDecl(),
+                                  Subst2->getReplacedDecl()))
+      return false;
+    if (Subst1->getIndex() != Subst2->getIndex())
       return false;
     if (!IsStructurallyEquivalent(Context, Subst1->getArgumentPack(),
                                   Subst2->getArgumentPack()))

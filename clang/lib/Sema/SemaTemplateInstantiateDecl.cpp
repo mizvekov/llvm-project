@@ -4775,7 +4775,7 @@ Sema::InstantiateFunctionDeclaration(FunctionTemplateDecl *FTD,
     return nullptr;
 
   ContextRAII SavedContext(*this, FD);
-  MultiLevelTemplateArgumentList MArgs(*Args);
+  MultiLevelTemplateArgumentList MArgs(FTD, Args->asArray());
 
   return cast_or_null<FunctionDecl>(SubstDecl(FD, FD->getParent(), MArgs));
 }
@@ -5121,9 +5121,6 @@ VarTemplateSpecializationDecl *Sema::BuildVarTemplateInstantiation(
   if (Inst.isInvalid())
     return nullptr;
 
-  MultiLevelTemplateArgumentList TemplateArgLists;
-  TemplateArgLists.addOuterTemplateArguments(&TemplateArgList);
-
   // Instantiate the first declaration of the variable template: for a partial
   // specialization of a static data member template, the first declaration may
   // or may not be the declaration in the class; if it's in the class, we want
@@ -5142,7 +5139,8 @@ VarTemplateSpecializationDecl *Sema::BuildVarTemplateInstantiation(
   if (!IsMemberSpec)
     FromVar = FromVar->getFirstDecl();
 
-  MultiLevelTemplateArgumentList MultiLevelList(TemplateArgList);
+  MultiLevelTemplateArgumentList MultiLevelList(VarTemplate,
+                                                TemplateArgList.asArray());
   TemplateDeclInstantiator Instantiator(*this, FromVar->getDeclContext(),
                                         MultiLevelList);
 
