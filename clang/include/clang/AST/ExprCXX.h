@@ -4268,24 +4268,30 @@ class SubstNonTypeTemplateParmExpr : public Expr {
   friend class ASTReader;
   friend class ASTStmtReader;
 
+  /// The replacement expression.
+  Stmt *Replacement;
+
   /// The replaced parameter and a flag indicating if it was a reference
   /// parameter. For class NTTPs, we can't determine that based on the value
   /// category alone.
-  llvm::PointerIntPair<NonTypeTemplateParmDecl*, 1, bool> ParamAndRef;
+  llvm::PointerIntPair<Decl *, 1, bool> AssociatedDeclAndRef;
 
-  /// The replacement expression.
-  Stmt *Replacement;
+  unsigned Index : 15;
+  unsigned PackIndex : 16;
 
   explicit SubstNonTypeTemplateParmExpr(EmptyShell Empty)
       : Expr(SubstNonTypeTemplateParmExprClass, Empty) {}
 
 public:
   SubstNonTypeTemplateParmExpr(QualType Ty, ExprValueKind ValueKind,
-                               SourceLocation Loc,
-                               NonTypeTemplateParmDecl *Param, bool RefParam,
-                               Expr *Replacement)
+                               SourceLocation Loc, Expr *Replacement,
+                               Decl *AssociatedDecl, unsigned Index,
+                               Optional<unsigned> PackIndex, bool RefParam)
       : Expr(SubstNonTypeTemplateParmExprClass, Ty, ValueKind, OK_Ordinary),
-        ParamAndRef(Param, RefParam), Replacement(Replacement) {
+        Replacement(Replacement),
+        AssociatedDeclAndRef(AssociatedDecl, RefParam), Index(Index),
+        PackIndex(PackIndex ? *PackIndex + 1 : 0) {
+    assert(AssociatedDecl != nullptr);
     SubstNonTypeTemplateParmExprBits.NameLoc = Loc;
     setDependence(computeDependence(this));
   }
@@ -4298,11 +4304,21 @@ public:
 
   Expr *getReplacement() const { return cast<Expr>(Replacement); }
 
-  NonTypeTemplateParmDecl *getParameter() const {
-    return ParamAndRef.getPointer();
+  Decl *getAssociatedDecl() const { return AssociatedDeclAndRef.getPointer(); }
+
+  /// Returns the index of the replaced parameter in the associated declaration.
+  /// This should match the result of `getParameter()->getIndex()`.
+  unsigned getIndex() const { return Index; }
+
+  Optional<unsigned> getPackIndex() const {
+    if (PackIndex == 0)
+      return None;
+    return PackIndex - 1;
   }
 
-  bool isReferenceParameter() const { return ParamAndRef.getInt(); }
+  NonTypeTemplateParmDecl *getParameter() const;
+
+  bool isReferenceParameter() const { return AssociatedDeclAndRef.getInt(); }
 
   /// Determine the substituted type of the template parameter.
   QualType getParameterType(const ASTContext &Ctx) const;
@@ -4336,14 +4352,16 @@ class SubstNonTypeTemplateParmPackExpr : public Expr {
   friend class ASTStmtReader;
 
   /// The non-type template parameter pack itself.
-  NonTypeTemplateParmDecl *Param;
+  Decl *AssociatedDecl;
 
   /// A pointer to the set of template arguments that this
   /// parameter pack is instantiated with.
   const TemplateArgument *Arguments;
 
   /// The number of template arguments in \c Arguments.
-  unsigned NumArguments;
+  unsigned NumArguments : 16;
+
+  unsigned Index : 16;
 
   /// The location of the non-type template parameter pack reference.
   SourceLocation NameLoc;
@@ -4352,14 +4370,17 @@ class SubstNonTypeTemplateParmPackExpr : public Expr {
       : Expr(SubstNonTypeTemplateParmPackExprClass, Empty) {}
 
 public:
-  SubstNonTypeTemplateParmPackExpr(QualType T,
-                                   ExprValueKind ValueKind,
-                                   NonTypeTemplateParmDecl *Param,
+  SubstNonTypeTemplateParmPackExpr(QualType T, ExprValueKind ValueKind,
                                    SourceLocation NameLoc,
-                                   const TemplateArgument &ArgPack);
+                                   const TemplateArgument &ArgPack,
+                                   Decl *AssociatedDecl, unsigned Index);
+
+  Decl *getAssociatedDecl() const { return AssociatedDecl; }
+
+  unsigned getIndex() const { return Index; }
 
   /// Retrieve the non-type template parameter pack being substituted.
-  NonTypeTemplateParmDecl *getParameterPack() const { return Param; }
+  NonTypeTemplateParmDecl *getParameterPack() const;
 
   /// Retrieve the location of the parameter pack name.
   SourceLocation getParameterPackLocation() const { return NameLoc; }
