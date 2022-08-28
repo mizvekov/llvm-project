@@ -471,6 +471,8 @@ documentation)
 bootstrapping-build)
     clean
 
+    export LLVM_SYMBOLIZER_PATH="/usr/bin/llvm-symbolizer-14"
+
     echo "--- Generating CMake"
     ${CMAKE} \
           -S "${MONOREPO_ROOT}/llvm" \
