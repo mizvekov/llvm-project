@@ -741,7 +741,7 @@ let Class = SubstTemplateTypeParmType in {
   // The call to getCanonicalType here existed in ASTReader.cpp, too.
   def : Creator<[{
     return ctx.getSubstTemplateTypeParmType(
-        ctx.getCanonicalType(replacementType), replacedDecl, Index);
+        replacementType, replacedDecl, Index);
   }]>;
 }
 

@@ -3718,6 +3718,11 @@ SubstTemplateTypeParmType::SubstTemplateTypeParmType(QualType Replacement,
     : Type(SubstTemplateTypeParm, Replacement.getCanonicalType(),
            Replacement->getDependence()),
       ReplacedDecl(ReplacedDecl) {
+  SubstTemplateTypeParmTypeBits.HasNonCanonicalUnderlyingType =
+      Replacement != getCanonicalTypeInternal();
+  if (SubstTemplateTypeParmTypeBits.HasNonCanonicalUnderlyingType)
+    *getTrailingObjects<QualType>() = Replacement;
+
   SubstTemplateTypeParmTypeBits.Index = Index;
   assert(ReplacedDecl != nullptr);
   assert(getReplacedParameter() != nullptr);

@@ -4752,9 +4752,6 @@ QualType ASTContext::getBTFTagAttributedType(const BTFTypeTagAttr *BTFAttr,
 QualType ASTContext::getSubstTemplateTypeParmType(QualType Replacement,
                                                   Decl *ReplacedDecl,
                                                   unsigned Index) const {
-  assert(Replacement.isCanonical()
-         && "replacement types must always be canonical");
-
   llvm::FoldingSetNodeID ID;
   SubstTemplateTypeParmType::Profile(ID, Replacement, ReplacedDecl, Index);
   void *InsertPos = nullptr;
@@ -4762,8 +4759,11 @@ QualType ASTContext::getSubstTemplateTypeParmType(QualType Replacement,
       SubstTemplateTypeParmTypes.FindNodeOrInsertPos(ID, InsertPos);
 
   if (!SubstParm) {
-    SubstParm = new (*this, TypeAlignment)
-        SubstTemplateTypeParmType(Replacement, ReplacedDecl, Index);
+    void *Mem = Allocate(SubstTemplateTypeParmType::totalSizeToAlloc<QualType>(
+                             !Replacement.isCanonical()),
+                         TypeAlignment);
+    SubstParm =
+        new (Mem) SubstTemplateTypeParmType(Replacement, ReplacedDecl, Index);
     Types.push_back(SubstParm);
     SubstTemplateTypeParmTypes.InsertNode(SubstParm, InsertPos);
   }

@@ -1798,8 +1798,10 @@ protected:
 
     unsigned : NumTypeBits;
 
+    unsigned HasNonCanonicalUnderlyingType : 1;
+
     // The index of the template parameter this substitution represents.
-    unsigned Index;
+    unsigned Index : 16;
   };
 
   class SubstTemplateTypeParmPackTypeBitfields {
@@ -4981,8 +4983,12 @@ public:
 /// been replaced with these.  They are used solely to record that a
 /// type was originally written as a template type parameter;
 /// therefore they are never canonical.
-class SubstTemplateTypeParmType : public Type, public llvm::FoldingSetNode {
+class SubstTemplateTypeParmType final
+    : public Type,
+      public llvm::FoldingSetNode,
+      private llvm::TrailingObjects<SubstTemplateTypeParmType, QualType> {
   friend class ASTContext;
+  friend class llvm::TrailingObjects<SubstTemplateTypeParmType, QualType>;
 
   Decl *ReplacedDecl;
 
@@ -4992,7 +4998,11 @@ class SubstTemplateTypeParmType : public Type, public llvm::FoldingSetNode {
 public:
   /// Gets the type that was substituted for the template
   /// parameter.
-  QualType getReplacementType() const { return getCanonicalTypeInternal(); }
+  QualType getReplacementType() const {
+    return SubstTemplateTypeParmTypeBits.HasNonCanonicalUnderlyingType
+               ? *getTrailingObjects<QualType>()
+               : getCanonicalTypeInternal();
+  }
 
   /// Gets the templated entity that was substituted.
   Decl *getReplacedDecl() const { return ReplacedDecl; }
@@ -5011,7 +5021,7 @@ public:
   static void Profile(llvm::FoldingSetNodeID &ID, QualType Replacement,
                       const Decl *ReplacedDecl, unsigned Index) {
     ID.AddPointer(ReplacedDecl);
-    ID.AddPointer(Replacement.getAsOpaquePtr());
+    Replacement.Profile(ID);
     ID.AddInteger(Index);
   }
 
