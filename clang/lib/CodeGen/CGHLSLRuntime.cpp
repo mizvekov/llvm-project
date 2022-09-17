@@ -233,7 +233,7 @@ calculateElementType(const ASTContext &Context, const clang::Type *ResourceTy) {
   // that don't have a template parameter (or, indeed, an element type).
   const auto *TST = ResourceTy->getAs<TemplateSpecializationType>();
   assert(TST && "Resource types must be template specializations");
-  ArrayRef<TemplateArgument> Args = TST->template_arguments();
+  ArrayRef<TemplateArgument> Args = TST->getSpecifiedArguments();
   assert(!Args.empty() && "Resource has no element type");
 
   // At this point we have a resource with an element type, so we can assume

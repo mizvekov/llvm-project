@@ -685,12 +685,7 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
   if (const auto *TD = TNP.getAsTemplateDecl(); TD && TD->isTypeAlias())
     return TemplateDeductionResult::Success;
 
-  // FIXME: To preserve sugar, the TST needs to carry sugared resolved
-  // arguments.
-  ArrayRef<TemplateArgument> PResolved =
-      TP->getCanonicalTypeInternal()
-          ->castAs<TemplateSpecializationType>()
-          ->template_arguments();
+  ArrayRef<TemplateArgument> PResolved = TP->getConvertedArguments();
 
   QualType UA = A;
   std::optional<NestedNameSpecifier *> NNS;
@@ -711,12 +706,7 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
     if (const auto *TD = TNA.getAsTemplateDecl(); TD && TD->isTypeAlias())
       return TemplateDeductionResult::Success;
 
-    // FIXME: To preserve sugar, the TST needs to carry sugared resolved
-    // arguments.
-    ArrayRef<TemplateArgument> AResolved =
-        SA->getCanonicalTypeInternal()
-            ->castAs<TemplateSpecializationType>()
-            ->template_arguments();
+    ArrayRef<TemplateArgument> AResolved = SA->getConvertedArguments();
 
     // Perform template argument deduction for the template name.
     if (auto Result = DeduceTemplateArguments(S, TemplateParams, TNP, TNA, Info,
@@ -750,6 +740,7 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
         *NNS, false, TemplateName(SA->getSpecializedTemplate()));
 
   // Perform template argument deduction for the template name.
+  // FIXME: Use the template args from the TST.
   if (auto Result =
           DeduceTemplateArguments(S, TemplateParams, TNP, TNA, Info,
                                   SA->getTemplateArgs().asArray(), Deduced);
@@ -5647,11 +5638,11 @@ FunctionTemplateDecl *Sema::getMoreSpecializedTemplate(
     auto *TST2 = dyn_cast<TemplateSpecializationType>(T2);
     if (!TST1 || !TST2)
       continue;
-    const TemplateArgument &TA1 = TST1->template_arguments().back();
+    const TemplateArgument &TA1 = TST1->getConvertedArguments().back();
     if (TA1.getKind() == TemplateArgument::Pack) {
-      assert(TST1->template_arguments().size() ==
-             TST2->template_arguments().size());
-      const TemplateArgument &TA2 = TST2->template_arguments().back();
+      assert(TST1->getConvertedArguments().size() ==
+             TST2->getConvertedArguments().size());
+      const TemplateArgument &TA2 = TST2->getConvertedArguments().back();
       assert(TA2.getKind() == TemplateArgument::Pack);
       unsigned PackSize1 = TA1.pack_size();
       unsigned PackSize2 = TA2.pack_size();
@@ -5880,7 +5871,7 @@ static bool isAtLeastAsSpecializedAs(Sema &S, QualType T1, QualType T2,
   S.runWithSufficientStackSpace(Info.getLocation(), [&] {
     AtLeastAsSpecialized =
         FinishTemplateArgumentDeduction(
-            S, P2, /*IsPartialOrdering=*/true, TST1->template_arguments(),
+            S, P2, /*IsPartialOrdering=*/true, TST1->getConvertedArguments(),
             Deduced, Info) == TemplateDeductionResult::Success;
   });
   return AtLeastAsSpecialized;
@@ -5999,11 +5990,11 @@ getMoreSpecialized(Sema &S, QualType T1, QualType T2, TemplateLikeDecl *P1,
   // there is no wording or even resolution for this issue.
   auto *TST1 = cast<TemplateSpecializationType>(T1);
   auto *TST2 = cast<TemplateSpecializationType>(T2);
-  const TemplateArgument &TA1 = TST1->template_arguments().back();
+  const TemplateArgument &TA1 = TST1->getConvertedArguments().back();
   if (TA1.getKind() == TemplateArgument::Pack) {
-    assert(TST1->template_arguments().size() ==
-           TST2->template_arguments().size());
-    const TemplateArgument &TA2 = TST2->template_arguments().back();
+    assert(TST1->getConvertedArguments().size() ==
+           TST2->getConvertedArguments().size());
+    const TemplateArgument &TA2 = TST2->getConvertedArguments().back();
     assert(TA2.getKind() == TemplateArgument::Pack);
     unsigned PackSize1 = TA1.pack_size();
     unsigned PackSize2 = TA2.pack_size();
@@ -6096,9 +6087,11 @@ Sema::getMoreSpecializedPartialSpecialization(
          " the same template.");
   TemplateName Name(PS1->getSpecializedTemplate());
   QualType PT1 = Context.getTemplateSpecializationType(
-      Name, PS1->getTemplateArgs().asArray());
+      Name, ArrayRef<TemplateArgument>(), std::nullopt,
+      PS1->getTemplateArgs().asArray());
   QualType PT2 = Context.getTemplateSpecializationType(
-      Name, PS2->getTemplateArgs().asArray());
+      Name, ArrayRef<TemplateArgument>(), std::nullopt,
+      PS2->getTemplateArgs().asArray());
 
   TemplateDeductionInfo Info(Loc);
   return getMoreSpecialized(*this, PT1, PT2, PS1, PS2, Info);
@@ -6109,9 +6102,11 @@ bool Sema::isMoreSpecializedThanPrimary(
   VarTemplateDecl *Primary = Spec->getSpecializedTemplate();
   TemplateName Name(Primary);
   QualType PrimaryT = Context.getTemplateSpecializationType(
-      Name, Primary->getInjectedTemplateArgs());
+      Name, ArrayRef<TemplateArgument>(), Primary->getInjectedTemplateArgs(),
+      std::nullopt);
   QualType PartialT = Context.getTemplateSpecializationType(
-      Name, Spec->getTemplateArgs().asArray());
+      Name, ArrayRef<TemplateArgument>(), std::nullopt,
+      Spec->getTemplateArgs().asArray());
 
   VarTemplatePartialSpecializationDecl *MaybeSpec =
       getMoreSpecialized(*this, PartialT, PrimaryT, Spec, Primary, Info);
@@ -6501,11 +6496,10 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
     //   If the template argument list of P contains a pack expansion that is
     //   not the last template argument, the entire template argument list is a
     //   non-deduced context.
-    if (OnlyDeduced &&
-        hasPackExpansionBeforeEnd(Spec->template_arguments()))
+    if (OnlyDeduced && hasPackExpansionBeforeEnd(Spec->getConvertedArguments()))
       break;
 
-    for (const auto &Arg : Spec->template_arguments())
+    for (const TemplateArgument &Arg : Spec->getConvertedArguments())
       MarkUsedTemplateParameters(Ctx, Arg, OnlyDeduced, Depth, Used);
     break;
   }

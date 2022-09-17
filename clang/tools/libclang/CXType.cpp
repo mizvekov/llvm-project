@@ -185,7 +185,7 @@ static std::optional<ArrayRef<TemplateArgument>>
 GetTemplateArguments(QualType Type) {
   assert(!Type.isNull());
   if (const auto *Specialization = Type->getAs<TemplateSpecializationType>())
-    return Specialization->template_arguments();
+    return Specialization->getSpecifiedArguments();
 
   if (const auto *RecordDecl = Type->getAsCXXRecordDecl()) {
     const auto *TemplateDecl =

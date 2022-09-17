@@ -7164,12 +7164,24 @@ QualType TreeTransform<Derived>::TransformTemplateSpecializationType(
   TemplateArgumentListInfo NewTemplateArgs;
   NewTemplateArgs.setLAngleLoc(TL.getLAngleLoc());
   NewTemplateArgs.setRAngleLoc(TL.getRAngleLoc());
-  typedef TemplateArgumentLocContainerIterator<TemplateSpecializationTypeLoc>
-    ArgIterator;
-  if (getDerived().TransformTemplateArguments(ArgIterator(TL, 0),
-                                              ArgIterator(TL, TL.getNumArgs()),
-                                              NewTemplateArgs))
-    return QualType();
+
+  const auto *T = cast<TemplateSpecializationType>(TL.getType());
+  if (T->isCanonicalUnqualified()) {
+    ArrayRef<TemplateArgument> ConvertedArgs = T->getConvertedArguments();
+    using ArgIterator =
+        TemplateArgumentLocInventIterator<Derived, const TemplateArgument *>;
+    if (getDerived().TransformTemplateArguments(
+            ArgIterator(*this, ConvertedArgs.begin()),
+            ArgIterator(*this, ConvertedArgs.end()), NewTemplateArgs))
+      return QualType();
+  } else {
+    using ArgIterator =
+        TemplateArgumentLocContainerIterator<TemplateSpecializationTypeLoc>;
+    if (getDerived().TransformTemplateArguments(
+            ArgIterator(TL, 0), ArgIterator(TL, TL.getNumArgs()),
+            NewTemplateArgs))
+      return QualType();
+  }
 
   // FIXME: maybe don't rebuild if all the template arguments are the same.
 

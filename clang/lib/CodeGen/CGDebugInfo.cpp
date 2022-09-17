@@ -1343,7 +1343,7 @@ GetTemplateArgs(const TemplateDecl *TD, const TemplateSpecializationType *Ty) {
   // doesn't know the value of any defaulted args, so collect those now
   // too.
   SmallVector<TemplateArgument> SpecArgs;
-  ArrayRef SubstArgs = Ty->template_arguments();
+  ArrayRef SubstArgs = Ty->getSpecifiedArguments();
   for (const NamedDecl *Param : TD->getTemplateParameters()->asArray()) {
     // If Param is a parameter pack, pack the remaining arguments.
     if (Param->isParameterPack()) {
@@ -1444,7 +1444,7 @@ llvm::DIType *CGDebugInfo::CreateType(const TemplateSpecializationType *Ty,
   // we don't need to worry about customizing the PrintingPolicy
   // here anymore.
   PP.PrintCanonicalTypes = false;
-  printTemplateArgumentList(OS, Ty->template_arguments(), PP,
+  printTemplateArgumentList(OS, Ty->getSpecifiedArguments(), PP,
                             TD->getTemplateParameters());
   return DBuilder.createTypedef(Src, OS.str(), getOrCreateFile(Loc),
                                 getLineNumber(Loc),

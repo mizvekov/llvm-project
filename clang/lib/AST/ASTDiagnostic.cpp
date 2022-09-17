@@ -119,7 +119,7 @@ QualType clang::desugarForDiagnostic(ASTContext &Context, QualType QT,
       if (!TST->isTypeAlias()) {
         bool DesugarArgument = false;
         SmallVector<TemplateArgument, 4> Args;
-        for (const TemplateArgument &Arg : TST->template_arguments()) {
+        for (const TemplateArgument &Arg : TST->getSpecifiedArguments()) {
           if (Arg.getKind() == TemplateArgument::Type)
             Args.push_back(desugarForDiagnostic(Context, Arg.getAsType(),
                                                 DesugarArgument));
@@ -130,7 +130,8 @@ QualType clang::desugarForDiagnostic(ASTContext &Context, QualType QT,
         if (DesugarArgument) {
           ShouldAKA = true;
           QT = Context.getTemplateSpecializationType(
-              TST->getTemplateName(), Args, QT);
+              TST->getTemplateName(), Args, TST->getConvertedArguments(),
+              /*CanonicalConvertedArguments=*/std::nullopt, QT);
         }
         break;
       }
@@ -986,7 +987,7 @@ class TemplateDiff {
         if (isEnd()) return;
 
         // Set to first template argument.  If not a parameter pack, done.
-        TemplateArgument TA = TST->template_arguments()[0];
+        TemplateArgument TA = TST->getSpecifiedArguments()[0];
         if (TA.getKind() != TemplateArgument::Pack) return;
 
         // Start looking into the parameter pack.
@@ -1007,7 +1008,7 @@ class TemplateDiff {
       /// isEnd - Returns true if the iterator is one past the end.
       bool isEnd() const {
         assert(TST && "InternalIterator is invalid with a null TST.");
-        return Index >= TST->template_arguments().size();
+        return Index >= TST->getSpecifiedArguments().size();
       }
 
       /// &operator++ - Increment the iterator to the next template argument.
@@ -1027,11 +1028,11 @@ class TemplateDiff {
         // Loop until a template argument is found, or the end is reached.
         while (true) {
           // Advance to the next template argument.  Break if reached the end.
-          if (++Index == TST->template_arguments().size())
+          if (++Index == TST->getSpecifiedArguments().size())
             break;
 
           // If the TemplateArgument is not a parameter pack, done.
-          TemplateArgument TA = TST->template_arguments()[Index];
+          TemplateArgument TA = TST->getSpecifiedArguments()[Index];
           if (TA.getKind() != TemplateArgument::Pack)
             break;
 
@@ -1051,7 +1052,7 @@ class TemplateDiff {
         assert(TST && "InternalIterator is invalid with a null TST.");
         assert(!isEnd() && "Index exceeds number of arguments.");
         if (CurrentTA == EndTA)
-          return TST->template_arguments()[Index];
+          return TST->getSpecifiedArguments()[Index];
         else
           return *CurrentTA;
       }
@@ -1135,9 +1136,11 @@ class TemplateDiff {
       return nullptr;
 
     Ty = Context.getTemplateSpecializationType(
-             TemplateName(CTSD->getSpecializedTemplate()),
-             CTSD->getTemplateArgs().asArray(),
-             Ty.getLocalUnqualifiedType().getCanonicalType());
+        TemplateName(CTSD->getSpecializedTemplate()),
+        /*SpecifiedArgs=*/CTSD->getTemplateArgs().asArray(),
+        /*SugaredConvertedArgs=*/CTSD->getTemplateArgs().asArray(),
+        /*CanonicalConvertedArgs=*/std::nullopt,
+        Ty.getLocalUnqualifiedType().getCanonicalType());
 
     return Ty->getAs<TemplateSpecializationType>();
   }

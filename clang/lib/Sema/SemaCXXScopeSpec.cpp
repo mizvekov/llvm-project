@@ -99,7 +99,7 @@ DeclContext *Sema::computeDeclContext(const CXXScopeSpec &SS,
             if (L != TemplateParamLists.end()) {
               void *Pos = nullptr;
               PartialSpec = ClassTemplate->findPartialSpecialization(
-                  SpecType->template_arguments(), *L, Pos);
+                  SpecType->getConvertedArguments(), *L, Pos);
             }
           } else {
             PartialSpec = ClassTemplate->findPartialSpecialization(ContextType);

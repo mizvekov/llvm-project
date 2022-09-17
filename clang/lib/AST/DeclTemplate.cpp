@@ -638,8 +638,11 @@ ClassTemplateDecl::getInjectedClassNameSpecialization() {
   Context.getInjectedTemplateArgs(Params, TemplateArgs);
   TemplateName Name = Context.getQualifiedTemplateName(
       /*NNS=*/nullptr, /*TemplateKeyword=*/false, TemplateName(this));
-  CommonPtr->InjectedClassNameType =
-      Context.getTemplateSpecializationType(Name, TemplateArgs);
+  CommonPtr->InjectedClassNameType = Context.getTemplateSpecializationType(
+      Name,
+      /*SpecifiedArgs=*/TemplateArgs,
+      /*SugaredConvertedArgs=*/TemplateArgs,
+      /*CanonicalConvertedArgs=*/std::nullopt);
   return CommonPtr->InjectedClassNameType;
 }
 
