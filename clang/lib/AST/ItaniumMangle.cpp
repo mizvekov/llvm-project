@@ -1240,7 +1240,9 @@ void CXXNameMangler::manglePrefix(QualType type) {
       // FIXME: GCC does not appear to mangle the template arguments when
       // the template in question is a dependent template name. Should we
       // emulate that badness?
-      mangleTemplateArgs(TST->getTemplateName(), TST->template_arguments());
+      auto Args = TST->isCanonicalUnqualified() ? TST->getConvertedArguments()
+                                                : TST->template_arguments();
+      mangleTemplateArgs(TST->getTemplateName(), Args);
       addSubstitution(QualType(TST, 0));
     }
   } else if (const auto *DTST =
@@ -2406,13 +2408,14 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
       break;
     }
     }
-
+    auto Args = TST->isCanonicalUnqualified() ? TST->getConvertedArguments()
+                                              : TST->template_arguments();
     // Note: we don't pass in the template name here. We are mangling the
     // original source-level template arguments, so we shouldn't consider
     // conversions to the corresponding template parameter.
     // FIXME: Other compilers mangle partially-resolved template arguments in
     // unresolved-qualifier-levels.
-    mangleTemplateArgs(TemplateName(), TST->template_arguments());
+    mangleTemplateArgs(TemplateName(), Args);
     break;
   }
 
@@ -3869,8 +3872,10 @@ void CXXNameMangler::mangleType(const InjectedClassNameType *T) {
 }
 
 void CXXNameMangler::mangleType(const TemplateSpecializationType *T) {
+  auto Args = T->isCanonicalUnqualified() ? T->getConvertedArguments()
+                                          : T->template_arguments();
   if (TemplateDecl *TD = T->getTemplateName().getAsTemplateDecl()) {
-    mangleTemplateName(TD, T->template_arguments());
+    mangleTemplateName(TD, Args);
   } else {
     if (mangleSubstitution(QualType(T, 0)))
       return;
@@ -3880,7 +3885,7 @@ void CXXNameMangler::mangleType(const TemplateSpecializationType *T) {
     // FIXME: GCC does not appear to mangle the template arguments when
     // the template in question is a dependent template name. Should we
     // emulate that badness?
-    mangleTemplateArgs(T->getTemplateName(), T->template_arguments());
+    mangleTemplateArgs(T->getTemplateName(), Args);
     addSubstitution(QualType(T, 0));
   }
 }

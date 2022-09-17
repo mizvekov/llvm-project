@@ -504,7 +504,7 @@ namespace overload_vs_pack {
 namespace b29946541 {
   template<typename> class A {};
   template<typename T, typename U, template<typename, typename> class C>
-  void f(C<T, U>); // expected-note {{failed template argument deduction}}
+  void f(C<T, U>); // expected-note {{couldn't infer template argument 'U'}}
   void g(A<int> a) { f(a); } // expected-error {{no match}}
 }
 

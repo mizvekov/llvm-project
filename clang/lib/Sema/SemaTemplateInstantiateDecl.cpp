@@ -3815,12 +3815,6 @@ TemplateDeclInstantiator::VisitClassTemplateSpecializationDecl(
   if (SubstQualifier(D, InstD))
     return nullptr;
 
-  // Build the canonical type that describes the converted template
-  // arguments of the class template explicit specialization.
-  QualType CanonType = SemaRef.Context.getTemplateSpecializationType(
-      TemplateName(InstClassTemplate), CanonicalConverted,
-      SemaRef.Context.getRecordType(InstD));
-
   // Build the fully-sugared type for this class template
   // specialization as the user wrote in the specialization
   // itself. This means that we'll pretty-print the type retrieved
@@ -3830,7 +3824,8 @@ TemplateDeclInstantiator::VisitClassTemplateSpecializationDecl(
   // template arguments in the specialization.
   TypeSourceInfo *WrittenTy = SemaRef.Context.getTemplateSpecializationTypeInfo(
       TemplateName(InstClassTemplate), D->getLocation(), InstTemplateArgs,
-      CanonType);
+      SugaredConverted, CanonicalConverted,
+      SemaRef.Context.getRecordType(InstD));
 
   InstD->setAccess(D->getAccess());
   InstD->setInstantiationOfMemberClass(D, TSK_ImplicitInstantiation);
@@ -4165,11 +4160,6 @@ TemplateDeclInstantiator::InstantiateClassTemplatePartialSpecialization(
       ClassTemplate->findPartialSpecialization(CanonicalConverted, InstParams,
                                                InsertPos);
 
-  // Build the canonical type that describes the converted template
-  // arguments of the class template partial specialization.
-  QualType CanonType = SemaRef.Context.getTemplateSpecializationType(
-      TemplateName(ClassTemplate), CanonicalConverted);
-
   // Build the fully-sugared type for this class template
   // specialization as the user wrote in the specialization
   // itself. This means that we'll pretty-print the type retrieved
@@ -4177,12 +4167,9 @@ TemplateDeclInstantiator::InstantiateClassTemplatePartialSpecialization(
   // actually wrote the specialization, rather than formatting the
   // name based on the "canonical" representation used to store the
   // template arguments in the specialization.
-  TypeSourceInfo *WrittenTy
-    = SemaRef.Context.getTemplateSpecializationTypeInfo(
-                                                    TemplateName(ClassTemplate),
-                                                    PartialSpec->getLocation(),
-                                                    InstTemplateArgs,
-                                                    CanonType);
+  TypeSourceInfo *WrittenTy = SemaRef.Context.getTemplateSpecializationTypeInfo(
+      TemplateName(ClassTemplate), PartialSpec->getLocation(), InstTemplateArgs,
+      SugaredConverted, CanonicalConverted);
 
   if (PrevDecl) {
     // We've already seen a partial specialization with the same template
@@ -4213,8 +4200,8 @@ TemplateDeclInstantiator::InstantiateClassTemplatePartialSpecialization(
       ClassTemplatePartialSpecializationDecl::Create(
           SemaRef.Context, PartialSpec->getTagKind(), Owner,
           PartialSpec->getBeginLoc(), PartialSpec->getLocation(), InstParams,
-          ClassTemplate, CanonicalConverted, InstTemplateArgs, CanonType,
-          nullptr);
+          ClassTemplate, CanonicalConverted, InstTemplateArgs,
+          WrittenTy->getType(), nullptr);
   // Substitute the nested name specifier, if any.
   if (SubstQualifier(PartialSpec, InstPartialSpec))
     return nullptr;
@@ -4290,11 +4277,6 @@ TemplateDeclInstantiator::InstantiateVarTemplatePartialSpecialization(
       VarTemplate->findPartialSpecialization(CanonicalConverted, InstParams,
                                              InsertPos);
 
-  // Build the canonical type that describes the converted template
-  // arguments of the variable template partial specialization.
-  QualType CanonType = SemaRef.Context.getTemplateSpecializationType(
-      TemplateName(VarTemplate), CanonicalConverted);
-
   // Build the fully-sugared type for this variable template
   // specialization as the user wrote in the specialization
   // itself. This means that we'll pretty-print the type retrieved
@@ -4304,7 +4286,7 @@ TemplateDeclInstantiator::InstantiateVarTemplatePartialSpecialization(
   // template arguments in the specialization.
   TypeSourceInfo *WrittenTy = SemaRef.Context.getTemplateSpecializationTypeInfo(
       TemplateName(VarTemplate), PartialSpec->getLocation(), InstTemplateArgs,
-      CanonType);
+      SugaredConverted, CanonicalConverted);
 
   if (PrevDecl) {
     // We've already seen a partial specialization with the same template

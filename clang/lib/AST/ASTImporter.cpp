@@ -1555,6 +1555,11 @@ ExpectedType ASTNodeImporter::VisitTemplateSpecializationType(
           ImportTemplateArguments(T->template_arguments(), ToTemplateArgs))
     return std::move(Err);
 
+  SmallVector<TemplateArgument, 2> ToConvertedArgs;
+  if (Error Err =
+          ImportTemplateArguments(T->getConvertedArguments(), ToConvertedArgs))
+    return std::move(Err);
+
   QualType ToCanonType;
   if (!T->isCanonicalUnqualified()) {
     QualType FromCanonType
@@ -1564,9 +1569,9 @@ ExpectedType ASTNodeImporter::VisitTemplateSpecializationType(
     else
       return TyOrErr.takeError();
   }
-  return Importer.getToContext().getTemplateSpecializationType(*ToTemplateOrErr,
-                                                               ToTemplateArgs,
-                                                               ToCanonType);
+  return Importer.getToContext().getTemplateSpecializationType(
+      *ToTemplateOrErr, ToTemplateArgs, ToConvertedArgs,
+      /*CanonicalConvertedArgs=*/None, ToCanonType);
 }
 
 ExpectedType ASTNodeImporter::VisitElaboratedType(const ElaboratedType *T) {

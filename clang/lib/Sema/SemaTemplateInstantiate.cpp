@@ -219,7 +219,7 @@ Response HandleRecordDecl(const CXXRecordDecl *Rec,
                               ->getInjectedSpecializationType();
       const auto *InjectedType = cast<TemplateSpecializationType>(Injected);
       Result.addOuterTemplateArguments(const_cast<CXXRecordDecl *>(Rec),
-                                       InjectedType->template_arguments(),
+                                       InjectedType->getConvertedArguments(),
                                        /*Final=*/false);
     }
   }
