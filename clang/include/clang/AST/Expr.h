@@ -1241,6 +1241,8 @@ class DeclRefExpr final
   /// The declaration that we are referencing.
   ValueDecl *D;
 
+  const TemplateArgumentList *ConvertedArgs;
+
   /// Provides source/type location info for the declaration name
   /// embedded in D.
   DeclarationNameLoc DNLoc;
@@ -1265,7 +1267,8 @@ class DeclRefExpr final
               SourceLocation TemplateKWLoc, ValueDecl *D,
               bool RefersToEnlosingVariableOrCapture,
               const DeclarationNameInfo &NameInfo, NamedDecl *FoundD,
-              const TemplateArgumentListInfo *TemplateArgs, QualType T,
+              const TemplateArgumentListInfo *TemplateArgs,
+              const TemplateArgumentList *ConvertedArgs, QualType T,
               ExprValueKind VK, NonOdrUseReason NOUR);
 
   /// Construct an empty declaration reference expression.
@@ -1284,6 +1287,7 @@ public:
          bool RefersToEnclosingVariableOrCapture, SourceLocation NameLoc,
          QualType T, ExprValueKind VK, NamedDecl *FoundD = nullptr,
          const TemplateArgumentListInfo *TemplateArgs = nullptr,
+         const TemplateArgumentList *ConvertedArgs = nullptr,
          NonOdrUseReason NOUR = NOUR_None);
 
   static DeclRefExpr *
@@ -1293,6 +1297,7 @@ public:
          const DeclarationNameInfo &NameInfo, QualType T, ExprValueKind VK,
          NamedDecl *FoundD = nullptr,
          const TemplateArgumentListInfo *TemplateArgs = nullptr,
+         const TemplateArgumentList *ConvertedArgs = nullptr,
          NonOdrUseReason NOUR = NOUR_None);
 
   /// Construct an empty declaration reference expression.
@@ -1399,6 +1404,8 @@ public:
       return nullptr;
     return getTrailingObjects<TemplateArgumentLoc>();
   }
+
+  const TemplateArgumentList *getConvertedArgs() const { return ConvertedArgs; }
 
   /// Retrieve the number of template arguments provided as part of this
   /// template-id.
@@ -3184,6 +3191,8 @@ class MemberExpr final
   /// In X.F, this is the decl referenced by F.
   ValueDecl *MemberDecl;
 
+  const TemplateArgumentList *Deduced;
+
   /// MemberDNLoc - Provides source/type location info for the
   /// declaration name embedded in MemberDecl.
   DeclarationNameLoc MemberDNLoc;
@@ -3209,21 +3218,20 @@ class MemberExpr final
 
   MemberExpr(Expr *Base, bool IsArrow, SourceLocation OperatorLoc,
              ValueDecl *MemberDecl, const DeclarationNameInfo &NameInfo,
-             QualType T, ExprValueKind VK, ExprObjectKind OK,
-             NonOdrUseReason NOUR);
+             const TemplateArgumentList *Deduced, QualType T, ExprValueKind VK,
+             ExprObjectKind OK, NonOdrUseReason NOUR);
   MemberExpr(EmptyShell Empty)
       : Expr(MemberExprClass, Empty), Base(), MemberDecl() {}
 
 public:
-  static MemberExpr *Create(const ASTContext &C, Expr *Base, bool IsArrow,
-                            SourceLocation OperatorLoc,
-                            NestedNameSpecifierLoc QualifierLoc,
-                            SourceLocation TemplateKWLoc, ValueDecl *MemberDecl,
-                            DeclAccessPair FoundDecl,
-                            DeclarationNameInfo MemberNameInfo,
-                            const TemplateArgumentListInfo *TemplateArgs,
-                            QualType T, ExprValueKind VK, ExprObjectKind OK,
-                            NonOdrUseReason NOUR);
+  static MemberExpr *
+  Create(const ASTContext &C, Expr *Base, bool IsArrow,
+         SourceLocation OperatorLoc, NestedNameSpecifierLoc QualifierLoc,
+         SourceLocation TemplateKWLoc, ValueDecl *MemberDecl,
+         DeclAccessPair FoundDecl, DeclarationNameInfo MemberNameInfo,
+         const TemplateArgumentListInfo *TemplateArgs,
+         const TemplateArgumentList *Deduced, QualType T, ExprValueKind VK,
+         ExprObjectKind OK, NonOdrUseReason NOUR);
 
   /// Create an implicit MemberExpr, with no location, qualifier, template
   /// arguments, and so on. Suitable only for non-static member access.
@@ -3234,7 +3242,8 @@ public:
     return Create(C, Base, IsArrow, SourceLocation(), NestedNameSpecifierLoc(),
                   SourceLocation(), MemberDecl,
                   DeclAccessPair::make(MemberDecl, MemberDecl->getAccess()),
-                  DeclarationNameInfo(), nullptr, T, VK, OK, NOUR_None);
+                  DeclarationNameInfo(), nullptr, nullptr, T, VK, OK,
+                  NOUR_None);
   }
 
   static MemberExpr *CreateEmpty(const ASTContext &Context, bool HasQualifier,
@@ -3259,6 +3268,8 @@ public:
                                   getMemberDecl()->getAccess());
     return getTrailingObjects<MemberExprNameQualifier>()->FoundDecl;
   }
+
+  const TemplateArgumentList *getDeduced() const { return Deduced; }
 
   /// Determines whether this member expression actually had
   /// a C++ nested-name-specifier prior to the name of the member, e.g.,

@@ -619,7 +619,8 @@ void ASTStmtWriter::VisitDeclRefExpr(DeclRefExpr *E) {
   if ((!E->hasTemplateKWAndArgsInfo()) && (!E->hasQualifier()) &&
       (E->getDecl() == E->getFoundDecl()) &&
       nk == DeclarationName::Identifier &&
-      !E->refersToEnclosingVariableOrCapture() && !E->isNonOdrUse()) {
+      !E->refersToEnclosingVariableOrCapture() && !E->isNonOdrUse() &&
+      !E->getConvertedArgs()) {
     AbbrevToUse = Writer.getDeclRefExprAbbrev();
   }
 
@@ -634,6 +635,10 @@ void ASTStmtWriter::VisitDeclRefExpr(DeclRefExpr *E) {
                              E->getTrailingObjects<TemplateArgumentLoc>());
 
   Record.AddDeclRef(E->getDecl());
+  if (E->ConvertedArgs)
+    Record.AddTemplateArgumentList(E->ConvertedArgs);
+  else
+    Record.push_back(0);
   Record.AddSourceLocation(E->getLocation());
   Record.AddDeclarationNameLoc(E->DNLoc, E->getDecl()->getDeclName());
   Code = serialization::EXPR_DECL_REF;
@@ -909,6 +914,10 @@ void ASTStmtWriter::VisitMemberExpr(MemberExpr *E) {
   Record.push_back(E->hadMultipleCandidates());
   Record.push_back(E->isNonOdrUse());
   Record.AddSourceLocation(E->getOperatorLoc());
+  if (E->Deduced)
+    Record.AddTemplateArgumentList(E->Deduced);
+  else
+    Record.push_back(0);
 
   if (HasFoundDecl) {
     DeclAccessPair FoundDecl = E->getFoundDecl();

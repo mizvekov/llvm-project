@@ -3721,7 +3721,8 @@ Sema::TemplateDeductionResult Sema::FinishTemplateArgumentDeduction(
 /// Gets the type of a function for template-argument-deducton
 /// purposes when it's considered as part of an overload set.
 static QualType GetTypeOfFunction(Sema &S, const OverloadExpr::FindResult &R,
-                                  FunctionDecl *Fn) {
+                                  FunctionDecl *Fn,
+                                  ArrayRef<TemplateArgument> Args) {
   // We may need to deduce the return type of the function now.
   if (S.getLangOpts().CPlusPlus14 && Fn->getReturnType()->isUndeducedType() &&
       S.DeduceReturnType(Fn, R.Expression->getExprLoc(), /*Diagnose*/ false))
@@ -3762,6 +3763,11 @@ ResolveOverloadForDeduction(Sema &S, TemplateParameterList *TemplateParams,
   if (R.IsAddressOfOperand)
     TDF |= TDF_IgnoreQualifiers;
 
+  // Gather the explicit template arguments, if any.
+  TemplateArgumentListInfo ExplicitTemplateArgs;
+  if (Ovl->hasExplicitTemplateArgs())
+    Ovl->copyTemplateArgumentsInto(ExplicitTemplateArgs);
+
   // C++0x [temp.deduct.call]p6:
   //   When P is a function type, pointer to function type, or pointer
   //   to member function type:
@@ -3771,28 +3777,27 @@ ResolveOverloadForDeduction(Sema &S, TemplateParameterList *TemplateParams,
       !ParamType->isMemberFunctionPointerType()) {
     if (Ovl->hasExplicitTemplateArgs()) {
       // But we can still look for an explicit specialization.
-      if (FunctionDecl *ExplicitSpec
-            = S.ResolveSingleFunctionTemplateSpecialization(Ovl))
-        return GetTypeOfFunction(S, R, ExplicitSpec);
+      const TemplateArgumentList *ConvertedArgs;
+      if (FunctionDecl *ExplicitSpec =
+              S.ResolveSingleFunctionTemplateSpecialization(
+                  Ovl, ExplicitTemplateArgs, ConvertedArgs))
+        return GetTypeOfFunction(S, R, ExplicitSpec, ConvertedArgs->asArray());
     }
 
     DeclAccessPair DAP;
     if (FunctionDecl *Viable =
             S.resolveAddressOfSingleOverloadCandidate(Arg, DAP))
-      return GetTypeOfFunction(S, R, Viable);
+      return GetTypeOfFunction(S, R, Viable, None);
 
     return {};
   }
 
-  // Gather the explicit template arguments, if any.
-  TemplateArgumentListInfo ExplicitTemplateArgs;
-  if (Ovl->hasExplicitTemplateArgs())
-    Ovl->copyTemplateArgumentsInto(ExplicitTemplateArgs);
   QualType Match;
   for (UnresolvedSetIterator I = Ovl->decls_begin(),
          E = Ovl->decls_end(); I != E; ++I) {
     NamedDecl *D = (*I)->getUnderlyingDecl();
 
+    const TemplateArgumentList *ConvertedArgs = nullptr;
     if (FunctionTemplateDecl *FunTmpl = dyn_cast<FunctionTemplateDecl>(D)) {
       //   - If the argument is an overload set containing one or more
       //     function templates, the parameter is treated as a
@@ -3808,10 +3813,12 @@ ResolveOverloadForDeduction(Sema &S, TemplateParameterList *TemplateParams,
         continue;
 
       D = Specialization;
+      ConvertedArgs = Info.takeSugared();
     }
 
     FunctionDecl *Fn = cast<FunctionDecl>(D);
-    QualType ArgType = GetTypeOfFunction(S, R, Fn);
+    QualType ArgType = GetTypeOfFunction(
+        S, R, Fn, ConvertedArgs ? ConvertedArgs->asArray() : None);
     if (ArgType.isNull()) continue;
 
     // Function-to-pointer conversion.

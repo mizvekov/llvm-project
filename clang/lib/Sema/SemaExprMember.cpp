@@ -897,12 +897,13 @@ MemberExpr *Sema::BuildMemberExpr(
     SourceLocation TemplateKWLoc, ValueDecl *Member, DeclAccessPair FoundDecl,
     bool HadMultipleCandidates, const DeclarationNameInfo &MemberNameInfo,
     QualType Ty, ExprValueKind VK, ExprObjectKind OK,
-    const TemplateArgumentListInfo *TemplateArgs) {
+    const TemplateArgumentListInfo *TemplateArgs,
+    const TemplateArgumentList *Deduced) {
   NestedNameSpecifierLoc NNS =
       SS ? SS->getWithLocInContext(Context) : NestedNameSpecifierLoc();
   return BuildMemberExpr(Base, IsArrow, OpLoc, NNS, TemplateKWLoc, Member,
                          FoundDecl, HadMultipleCandidates, MemberNameInfo, Ty,
-                         VK, OK, TemplateArgs);
+                         VK, OK, TemplateArgs, Deduced);
 }
 
 MemberExpr *Sema::BuildMemberExpr(
@@ -910,13 +911,14 @@ MemberExpr *Sema::BuildMemberExpr(
     SourceLocation TemplateKWLoc, ValueDecl *Member, DeclAccessPair FoundDecl,
     bool HadMultipleCandidates, const DeclarationNameInfo &MemberNameInfo,
     QualType Ty, ExprValueKind VK, ExprObjectKind OK,
-    const TemplateArgumentListInfo *TemplateArgs) {
+    const TemplateArgumentListInfo *TemplateArgs,
+    const TemplateArgumentList *Deduced) {
   assert((!IsArrow || Base->isPRValue()) &&
          "-> base must be a pointer prvalue");
-  MemberExpr *E =
-      MemberExpr::Create(Context, Base, IsArrow, OpLoc, NNS, TemplateKWLoc,
-                         Member, FoundDecl, MemberNameInfo, TemplateArgs, Ty,
-                         VK, OK, getNonOdrUseReasonInCurrentContext(Member));
+  MemberExpr *E = MemberExpr::Create(
+      Context, Base, IsArrow, OpLoc, NNS, TemplateKWLoc, Member, FoundDecl,
+      MemberNameInfo, TemplateArgs, Deduced, Ty, VK, OK,
+      getNonOdrUseReasonInCurrentContext(Member));
   E->setHadMultipleCandidates(HadMultipleCandidates);
   MarkMemberReferenced(E);
 
@@ -1146,8 +1148,10 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       return ExprError();
     }
 
-    DeclResult VDecl = CheckVarTemplateId(VarTempl, TemplateKWLoc,
-                                          MemberNameInfo.getLoc(), *TemplateArgs);
+    const TemplateArgumentList *ConvertedArgs;
+    DeclResult VDecl =
+        CheckVarTemplateId(VarTempl, TemplateKWLoc, MemberNameInfo.getLoc(),
+                           *TemplateArgs, ConvertedArgs);
     if (VDecl.isInvalid())
       return ExprError();
 
@@ -1164,7 +1168,7 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
     return BuildMemberExpr(BaseExpr, IsArrow, OpLoc, &SS, TemplateKWLoc, Var,
                            FoundDecl, /*HadMultipleCandidates=*/false,
                            MemberNameInfo, Var->getType().getNonReferenceType(),
-                           VK_LValue, OK_Ordinary, TemplateArgs);
+                           VK_LValue, OK_Ordinary, TemplateArgs, ConvertedArgs);
   }
 
   // We found something that we didn't expect. Complain.

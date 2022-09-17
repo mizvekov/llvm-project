@@ -1826,9 +1826,9 @@ static bool IsStandardConversion(Sema &S, Expr* From, QualType ToType,
 
   if (FromType == S.Context.OverloadTy) {
     DeclAccessPair AccessPair;
-    if (FunctionDecl *Fn
-          = S.ResolveAddressOfOverloadedFunction(From, ToType, false,
-                                                 AccessPair)) {
+    const TemplateArgumentList *ConvertedArgs;
+    if (FunctionDecl *Fn = S.ResolveAddressOfOverloadedFunction(
+            From, ToType, false, AccessPair, ConvertedArgs)) {
       // We were able to resolve the address of the overloaded function,
       // so we can convert to the type of that function.
       FromType = Fn->getType();
@@ -4853,8 +4853,9 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
   // type of the resulting function.
   if (S.Context.getCanonicalType(T2) == S.Context.OverloadTy) {
     DeclAccessPair Found;
-    if (FunctionDecl *Fn = S.ResolveAddressOfOverloadedFunction(Init, DeclType,
-                                                                false, Found))
+    const TemplateArgumentList *ConvertedArgs;
+    if (FunctionDecl *Fn = S.ResolveAddressOfOverloadedFunction(
+            Init, DeclType, false, Found, ConvertedArgs))
       T2 = Fn->getType();
   }
 
@@ -5330,8 +5331,9 @@ TryListConversion(Sema &S, InitListExpr *From, QualType ToType,
       // type of the resulting function.
       if (S.Context.getCanonicalType(T2) == S.Context.OverloadTy) {
         DeclAccessPair Found;
+        const TemplateArgumentList *ConvertedArgs;
         if (FunctionDecl *Fn = S.ResolveAddressOfOverloadedFunction(
-                                   Init, ToType, false, Found))
+                Init, ToType, false, Found, ConvertedArgs))
           T2 = Fn->getType();
       }
 
@@ -6430,7 +6432,7 @@ void Sema::AddOverloadCandidate(
     OverloadCandidateSet &CandidateSet, bool SuppressUserConversions,
     bool PartialOverloading, bool AllowExplicit, bool AllowExplicitConversions,
     ADLCallKind IsADLCandidate, ConversionSequenceList EarlyConversions,
-    OverloadCandidateParamOrder PO) {
+    OverloadCandidateParamOrder PO, const TemplateArgumentList *Deduced) {
   const FunctionProtoType *Proto
     = dyn_cast<FunctionProtoType>(Function->getType()->getAs<FunctionType>());
   assert(Proto && "Functions without a prototype cannot be overloaded");
@@ -6449,7 +6451,7 @@ void Sema::AddOverloadCandidate(
       AddMethodCandidate(Method, FoundDecl, Method->getParent(), QualType(),
                          Expr::Classification::makeSimpleLValue(), Args,
                          CandidateSet, SuppressUserConversions,
-                         PartialOverloading, EarlyConversions, PO);
+                         PartialOverloading, EarlyConversions, PO, Deduced);
       return;
     }
     // We treat a constructor like a non-member function, since its object
@@ -6494,6 +6496,7 @@ void Sema::AddOverloadCandidate(
   Candidate.IsADLCandidate = IsADLCandidate;
   Candidate.IgnoreObjectArgument = false;
   Candidate.ExplicitCallArguments = Args.size();
+  Candidate.Deduced = Deduced;
 
   // Explicit functions are not actually candidates at all if we're not
   // allowing them in this context, but keep them around so we can point
@@ -7029,16 +7032,13 @@ void Sema::AddMethodCandidate(DeclAccessPair FoundDecl, QualType ObjectType,
 /// both @c a1 and @c a2. If @p SuppressUserConversions, then don't
 /// allow user-defined conversions via constructors or conversion
 /// operators.
-void
-Sema::AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
-                         CXXRecordDecl *ActingContext, QualType ObjectType,
-                         Expr::Classification ObjectClassification,
-                         ArrayRef<Expr *> Args,
-                         OverloadCandidateSet &CandidateSet,
-                         bool SuppressUserConversions,
-                         bool PartialOverloading,
-                         ConversionSequenceList EarlyConversions,
-                         OverloadCandidateParamOrder PO) {
+void Sema::AddMethodCandidate(
+    CXXMethodDecl *Method, DeclAccessPair FoundDecl,
+    CXXRecordDecl *ActingContext, QualType ObjectType,
+    Expr::Classification ObjectClassification, ArrayRef<Expr *> Args,
+    OverloadCandidateSet &CandidateSet, bool SuppressUserConversions,
+    bool PartialOverloading, ConversionSequenceList EarlyConversions,
+    OverloadCandidateParamOrder PO, const TemplateArgumentList *Deduced) {
   const FunctionProtoType *Proto
     = dyn_cast<FunctionProtoType>(Method->getType()->getAs<FunctionType>());
   assert(Proto && "Methods without a prototype cannot be overloaded");
@@ -7069,6 +7069,7 @@ Sema::AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
   Candidate.IsSurrogate = false;
   Candidate.IgnoreObjectArgument = false;
   Candidate.ExplicitCallArguments = Args.size();
+  Candidate.Deduced = Deduced;
 
   unsigned NumParams = Proto->getNumParams();
 
@@ -7256,7 +7257,7 @@ void Sema::AddMethodTemplateCandidate(
   AddMethodCandidate(cast<CXXMethodDecl>(Specialization), FoundDecl,
                      ActingContext, ObjectType, ObjectClassification, Args,
                      CandidateSet, SuppressUserConversions, PartialOverloading,
-                     Conversions, PO);
+                     Conversions, PO, Info.takeSugared());
 }
 
 /// Determine whether a given function template has a simple explicit specifier
@@ -7336,10 +7337,11 @@ void Sema::AddTemplateOverloadCandidate(
   // Add the function template specialization produced by template argument
   // deduction as a candidate.
   assert(Specialization && "Missing function template specialization?");
-  AddOverloadCandidate(
-      Specialization, FoundDecl, Args, CandidateSet, SuppressUserConversions,
-      PartialOverloading, AllowExplicit,
-      /*AllowExplicitConversions*/ false, IsADLCandidate, Conversions, PO);
+  AddOverloadCandidate(Specialization, FoundDecl, Args, CandidateSet,
+                       SuppressUserConversions, PartialOverloading,
+                       AllowExplicit,
+                       /*AllowExplicitConversions*/ false, IsADLCandidate,
+                       Conversions, PO, Info.takeSugared());
 }
 
 /// Check that implicit conversion sequences can be formed for each argument
@@ -12187,7 +12189,10 @@ class AddressOfFunctionResolver {
   OverloadExpr::FindResult OvlExprInfo;
   OverloadExpr *OvlExpr;
   TemplateArgumentListInfo OvlExplicitTemplateArgs;
-  SmallVector<std::pair<DeclAccessPair, FunctionDecl*>, 4> Matches;
+  SmallVector<
+      std::tuple<DeclAccessPair, FunctionDecl *, const TemplateArgumentList *>,
+      4>
+      Matches;
   TemplateSpecCandidateSet FailedCandidates;
 
 public:
@@ -12205,15 +12210,22 @@ public:
         FailedCandidates(OvlExpr->getNameLoc(), /*ForTakingAddress=*/true) {
     ExtractUnqualifiedFunctionTypeFromTargetType();
 
+    if (OvlExpr->hasExplicitTemplateArgs())
+      OvlExpr->copyTemplateArgumentsInto(OvlExplicitTemplateArgs);
+
+    const TemplateArgumentList *ConvertedArgs;
     if (TargetFunctionType->isFunctionType()) {
       if (UnresolvedMemberExpr *UME = dyn_cast<UnresolvedMemberExpr>(OvlExpr))
         if (!UME->isImplicitAccess() &&
-            !S.ResolveSingleFunctionTemplateSpecialization(UME))
+            (!OvlExpr->hasExplicitTemplateArgs() ||
+             !S.ResolveSingleFunctionTemplateSpecialization(
+                 UME, OvlExplicitTemplateArgs, ConvertedArgs)))
           StaticMemberFunctionFromBoundPointer = true;
     } else if (OvlExpr->hasExplicitTemplateArgs()) {
       DeclAccessPair dap;
       if (FunctionDecl *Fn = S.ResolveSingleFunctionTemplateSpecialization(
-              OvlExpr, false, &dap)) {
+              OvlExpr, OvlExplicitTemplateArgs, ConvertedArgs,
+              /*Complain=*/false, &dap)) {
         if (CXXMethodDecl *Method = dyn_cast<CXXMethodDecl>(Fn))
           if (!Method->isStatic()) {
             // If the target type is a non-function type and the function found
@@ -12227,13 +12239,10 @@ public:
               return;
           }
 
-        Matches.push_back(std::make_pair(dap, Fn));
+        Matches.push_back({dap, Fn, ConvertedArgs});
       }
       return;
     }
-
-    if (OvlExpr->hasExplicitTemplateArgs())
-      OvlExpr->copyTemplateArgumentsInto(OvlExplicitTemplateArgs);
 
     if (FindAllFunctionsThatMatchTargetTypeExactly()) {
       // C++ [over.over]p4:
@@ -12276,15 +12285,17 @@ private:
     // Same algorithm as overload resolution -- one pass to pick the "best",
     // another pass to be sure that nothing is better than the best.
     auto Best = Matches.begin();
-    for (auto I = Matches.begin()+1, E = Matches.end(); I != E; ++I)
-      if (isBetterCandidate(I->second, Best->second))
+    for (auto I = Matches.begin() + 1, E = Matches.end(); I != E; ++I)
+      if (isBetterCandidate(std::get<1>(*I), std::get<1>(*Best)))
         Best = I;
 
-    const FunctionDecl *BestFn = Best->second;
-    auto IsBestOrInferiorToBest = [this, BestFn](
-        const std::pair<DeclAccessPair, FunctionDecl *> &Pair) {
-      return BestFn == Pair.second || isBetterCandidate(BestFn, Pair.second);
-    };
+    const FunctionDecl *BestFn = std::get<1>(*Best);
+    auto IsBestOrInferiorToBest =
+        [this, BestFn](const std::tuple<DeclAccessPair, FunctionDecl *,
+                                        const TemplateArgumentList *> &Tuple) {
+          return BestFn == std::get<1>(Tuple) ||
+                 isBetterCandidate(BestFn, std::get<1>(Tuple));
+        };
 
     // Note: We explicitly leave Matches unmodified if there isn't a clear best
     // option, so we can potentially give the user a better error
@@ -12351,7 +12362,7 @@ private:
     if (!S.checkAddressOfFunctionIsAvailable(Specialization))
       return false;
 
-    Matches.push_back(std::make_pair(CurAccessFunPair, Specialization));
+    Matches.push_back({CurAccessFunPair, Specialization, Info.takeSugared()});
     return true;
   }
 
@@ -12391,8 +12402,9 @@ private:
       // If we're in C, we need to support types that aren't exactly identical.
       if (!S.getLangOpts().CPlusPlus ||
           candidateHasExactlyCorrectType(FunDecl)) {
-        Matches.push_back(std::make_pair(
-            CurAccessFunPair, cast<FunctionDecl>(FunDecl->getCanonicalDecl())));
+        Matches.push_back({CurAccessFunPair,
+                           cast<FunctionDecl>(FunDecl->getCanonicalDecl()),
+                           nullptr});
         FoundNonTemplateFunction = true;
         return true;
       }
@@ -12449,7 +12461,8 @@ private:
 
     UnresolvedSet<4> MatchesCopy; // TODO: avoid!
     for (unsigned I = 0, E = Matches.size(); I != E; ++I)
-      MatchesCopy.addDecl(Matches[I].second, Matches[I].first.getAccess());
+      MatchesCopy.addDecl(std::get<1>(Matches[I]),
+                          std::get<0>(Matches[I]).getAccess());
 
     // TODO: It looks like FailedCandidates does not serve much purpose
     // here, since the no_viable diagnostic has index 0.
@@ -12457,15 +12470,16 @@ private:
         MatchesCopy.begin(), MatchesCopy.end(), FailedCandidates,
         SourceExpr->getBeginLoc(), S.PDiag(),
         S.PDiag(diag::err_addr_ovl_ambiguous)
-            << Matches[0].second->getDeclName(),
+            << std::get<1>(Matches[0])->getDeclName(),
         S.PDiag(diag::note_ovl_candidate)
             << (unsigned)oc_function << (unsigned)ocs_described_template,
         Complain, TargetFunctionType);
 
     if (Result != MatchesCopy.end()) {
       // Make it the first and only element
-      Matches[0].first = Matches[Result - MatchesCopy.begin()].first;
-      Matches[0].second = cast<FunctionDecl>(*Result);
+      const auto &Old = Matches[Result - MatchesCopy.begin()];
+      Matches[0] = {std::get<0>(Old), cast<FunctionDecl>(*Result),
+                    std::get<2>(Old)};
       Matches.resize(1);
     } else
       HasComplained |= Complain;
@@ -12475,7 +12489,7 @@ private:
     //   [...] any function template specializations in the set are
     //   eliminated if the set also contains a non-template function, [...]
     for (unsigned I = 0, N = Matches.size(); I != N; ) {
-      if (Matches[I].second->getPrimaryTemplate() == nullptr)
+      if (std::get<1>(Matches[I])->getPrimaryTemplate() == nullptr)
         ++I;
       else {
         Matches[I] = Matches[--N];
@@ -12556,12 +12570,18 @@ public:
 
   FunctionDecl* getMatchingFunctionDecl() const {
     if (Matches.size() != 1) return nullptr;
-    return Matches[0].second;
+    return std::get<1>(Matches[0]);
   }
 
   const DeclAccessPair* getMatchingFunctionAccessPair() const {
     if (Matches.size() != 1) return nullptr;
-    return &Matches[0].first;
+    return &std::get<0>(Matches[0]);
+  }
+
+  const TemplateArgumentList *getMatchingFunctionConvertedArgs() const {
+    if (Matches.size() != 1)
+      return nullptr;
+    return std::get<2>(Matches[0]);
   }
 };
 }
@@ -12581,12 +12601,10 @@ public:
 /// This routine returns the resulting FunctionDecl if it could be
 /// resolved, and NULL otherwise. When @p Complain is true, this
 /// routine will emit diagnostics if there is an error.
-FunctionDecl *
-Sema::ResolveAddressOfOverloadedFunction(Expr *AddressOfExpr,
-                                         QualType TargetType,
-                                         bool Complain,
-                                         DeclAccessPair &FoundResult,
-                                         bool *pHadMultipleCandidates) {
+FunctionDecl *Sema::ResolveAddressOfOverloadedFunction(
+    Expr *AddressOfExpr, QualType TargetType, bool Complain,
+    DeclAccessPair &FoundResult, const TemplateArgumentList *&ConvertedArgs,
+    bool *pHadMultipleCandidates) {
   assert(AddressOfExpr->getType() == Context.OverloadTy);
 
   AddressOfFunctionResolver Resolver(*this, AddressOfExpr, TargetType,
@@ -12608,6 +12626,7 @@ Sema::ResolveAddressOfOverloadedFunction(Expr *AddressOfExpr,
     if (auto *FPT = Fn->getType()->getAs<FunctionProtoType>())
       ResolveExceptionSpec(AddressOfExpr->getExprLoc(), FPT);
     FoundResult = *Resolver.getMatchingFunctionAccessPair();
+    ConvertedArgs = Resolver.getMatchingFunctionConvertedArgs();
     if (Complain) {
       if (Resolver.IsStaticMemberFunctionFromBoundPointer())
         Resolver.ComplainIsStaticMemberFunctionFromBoundPointer();
@@ -12724,7 +12743,7 @@ bool Sema::resolveAndFixAddressOfSingleOverloadCandidate(
   // for both.
   DiagnoseUseOfDecl(Found, E->getExprLoc());
   CheckAddressOfMemberAccess(E, DAP);
-  Expr *Fixed = FixOverloadedFunctionReference(E, DAP, Found);
+  Expr *Fixed = FixOverloadedFunctionReference(E, DAP, Found, nullptr);
   if (DoFunctionPointerConversion && Fixed->getType()->isFunctionType())
     SrcExpr = DefaultFunctionArrayConversion(Fixed, /*Diagnose=*/false);
   else
@@ -12742,10 +12761,10 @@ bool Sema::resolveAndFixAddressOfSingleOverloadCandidate(
 ///
 /// If no template-ids are found, no diagnostics are emitted and NULL is
 /// returned.
-FunctionDecl *
-Sema::ResolveSingleFunctionTemplateSpecialization(OverloadExpr *ovl,
-                                                  bool Complain,
-                                                  DeclAccessPair *FoundResult) {
+FunctionDecl *Sema::ResolveSingleFunctionTemplateSpecialization(
+    OverloadExpr *ovl, TemplateArgumentListInfo &ExplicitTemplateArgs,
+    const TemplateArgumentList *&ConvertedArgs, bool Complain,
+    DeclAccessPair *FoundResult) {
   // C++ [over.over]p1:
   //   [...] [Note: any redundant set of parentheses surrounding the
   //   overloaded function name is ignored (5.1). ]
@@ -12753,12 +12772,9 @@ Sema::ResolveSingleFunctionTemplateSpecialization(OverloadExpr *ovl,
   //   [...] The overloaded function name can be preceded by the &
   //   operator.
 
-  // If we didn't actually find any template-ids, we're done.
-  if (!ovl->hasExplicitTemplateArgs())
-    return nullptr;
+  // Specializations must have template args.
+  assert(ovl->hasExplicitTemplateArgs());
 
-  TemplateArgumentListInfo ExplicitTemplateArgs;
-  ovl->copyTemplateArgumentsInto(ExplicitTemplateArgs);
   TemplateSpecCandidateSet FailedCandidates(ovl->getNameLoc());
 
   // Look through all of the overloaded functions, searching for one
@@ -12809,6 +12825,7 @@ Sema::ResolveSingleFunctionTemplateSpecialization(OverloadExpr *ovl,
 
     Matched = Specialization;
     if (FoundResult) *FoundResult = I.getPair();
+    ConvertedArgs = Info.takeSugared();
   }
 
   if (Matched &&
@@ -12833,49 +12850,54 @@ bool Sema::ResolveAndFixSingleFunctionTemplateSpecialization(
   assert(SrcExpr.get()->getType() == Context.OverloadTy);
 
   OverloadExpr::FindResult ovl = OverloadExpr::find(SrcExpr.get());
-
-  DeclAccessPair found;
   ExprResult SingleFunctionExpression;
-  if (FunctionDecl *fn = ResolveSingleFunctionTemplateSpecialization(
-                           ovl.Expression, /*complain*/ false, &found)) {
-    if (DiagnoseUseOfDecl(fn, SrcExpr.get()->getBeginLoc())) {
-      SrcExpr = ExprError();
-      return true;
-    }
+  if (ovl.Expression->hasExplicitTemplateArgs()) {
+    TemplateArgumentListInfo ExplicitTemplateArgs;
+    ovl.Expression->copyTemplateArgumentsInto(ExplicitTemplateArgs);
 
-    // It is only correct to resolve to an instance method if we're
-    // resolving a form that's permitted to be a pointer to member.
-    // Otherwise we'll end up making a bound member expression, which
-    // is illegal in all the contexts we resolve like this.
-    if (!ovl.HasFormOfMemberPointer &&
-        isa<CXXMethodDecl>(fn) &&
-        cast<CXXMethodDecl>(fn)->isInstance()) {
-      if (!complain) return false;
-
-      Diag(ovl.Expression->getExprLoc(),
-           diag::err_bound_member_function)
-        << 0 << ovl.Expression->getSourceRange();
-
-      // TODO: I believe we only end up here if there's a mix of
-      // static and non-static candidates (otherwise the expression
-      // would have 'bound member' type, not 'overload' type).
-      // Ideally we would note which candidate was chosen and why
-      // the static candidates were rejected.
-      SrcExpr = ExprError();
-      return true;
-    }
-
-    // Fix the expression to refer to 'fn'.
-    SingleFunctionExpression =
-        FixOverloadedFunctionReference(SrcExpr.get(), found, fn);
-
-    // If desired, do function-to-pointer decay.
-    if (doFunctionPointerConversion) {
-      SingleFunctionExpression =
-        DefaultFunctionArrayLvalueConversion(SingleFunctionExpression.get());
-      if (SingleFunctionExpression.isInvalid()) {
+    const TemplateArgumentList *ConvertedArgs;
+    DeclAccessPair found;
+    if (FunctionDecl *fn = ResolveSingleFunctionTemplateSpecialization(
+            ovl.Expression, ExplicitTemplateArgs, ConvertedArgs,
+            /*Complain=*/false, &found)) {
+      if (DiagnoseUseOfDecl(fn, SrcExpr.get()->getBeginLoc())) {
         SrcExpr = ExprError();
         return true;
+      }
+
+      // It is only correct to resolve to an instance method if we're
+      // resolving a form that's permitted to be a pointer to member.
+      // Otherwise we'll end up making a bound member expression, which
+      // is illegal in all the contexts we resolve like this.
+      if (!ovl.HasFormOfMemberPointer && isa<CXXMethodDecl>(fn) &&
+          cast<CXXMethodDecl>(fn)->isInstance()) {
+        if (!complain)
+          return false;
+
+        Diag(ovl.Expression->getExprLoc(), diag::err_bound_member_function)
+            << 0 << ovl.Expression->getSourceRange();
+
+        // TODO: I believe we only end up here if there's a mix of
+        // static and non-static candidates (otherwise the expression
+        // would have 'bound member' type, not 'overload' type).
+        // Ideally we would note which candidate was chosen and why
+        // the static candidates were rejected.
+        SrcExpr = ExprError();
+        return true;
+      }
+
+      // Fix the expression to refer to 'fn'.
+      SingleFunctionExpression = FixOverloadedFunctionReference(
+          SrcExpr.get(), found, fn, ConvertedArgs);
+
+      // If desired, do function-to-pointer decay.
+      if (doFunctionPointerConversion) {
+        SingleFunctionExpression = DefaultFunctionArrayLvalueConversion(
+            SingleFunctionExpression.get());
+        if (SingleFunctionExpression.isInvalid()) {
+          SrcExpr = ExprError();
+          return true;
+        }
       }
     }
   }
@@ -13389,7 +13411,8 @@ static ExprResult FinishOverloadedCallExpr(Sema &SemaRef, Scope *S, Expr *Fn,
     SemaRef.CheckUnresolvedLookupAccess(ULE, (*Best)->FoundDecl);
     if (SemaRef.DiagnoseUseOfDecl(FDecl, ULE->getNameLoc()))
       return ExprError();
-    Fn = SemaRef.FixOverloadedFunctionReference(Fn, (*Best)->FoundDecl, FDecl);
+    Fn = SemaRef.FixOverloadedFunctionReference(Fn, (*Best)->FoundDecl, FDecl,
+                                                (*Best)->Deduced);
     return SemaRef.BuildResolvedCallExpr(Fn, FDecl, LParenLoc, Args, RParenLoc,
                                          ExecConfig, /*IsExecConfig=*/false,
                                          (*Best)->IsADLCandidate);
@@ -13447,7 +13470,8 @@ static ExprResult FinishOverloadedCallExpr(Sema &SemaRef, Scope *S, Expr *Fn,
     // We emitted an error for the unavailable/deleted function call but keep
     // the call in the AST.
     FunctionDecl *FDecl = (*Best)->Function;
-    Fn = SemaRef.FixOverloadedFunctionReference(Fn, (*Best)->FoundDecl, FDecl);
+    Fn = SemaRef.FixOverloadedFunctionReference(Fn, (*Best)->FoundDecl, FDecl,
+                                                (*Best)->Deduced);
     return SemaRef.BuildResolvedCallExpr(Fn, FDecl, LParenLoc, Args, RParenLoc,
                                          ExecConfig, /*IsExecConfig=*/false,
                                          (*Best)->IsADLCandidate);
@@ -14731,7 +14755,8 @@ ExprResult Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
     if (!Succeeded)
       return BuildRecoveryExpr(chooseRecoveryType(CandidateSet, &Best));
 
-    MemExprE = FixOverloadedFunctionReference(MemExprE, FoundDecl, Method);
+    MemExprE = FixOverloadedFunctionReference(MemExprE, FoundDecl, Method,
+                                              Best->Deduced);
 
     // If overload resolution picked a static member, build a
     // non-member call based on that function.
@@ -15354,11 +15379,13 @@ Sema::BuildForRangeBeginEndCall(SourceLocation Loc,
 /// perhaps a '&' around it). We have resolved the overloaded function
 /// to the function declaration Fn, so patch up the expression E to
 /// refer (possibly indirectly) to Fn. Returns the new expr.
-Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
-                                           FunctionDecl *Fn) {
+Expr *
+Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
+                                     FunctionDecl *Fn,
+                                     const TemplateArgumentList *Deduced) {
   if (ParenExpr *PE = dyn_cast<ParenExpr>(E)) {
-    Expr *SubExpr = FixOverloadedFunctionReference(PE->getSubExpr(),
-                                                   Found, Fn);
+    Expr *SubExpr =
+        FixOverloadedFunctionReference(PE->getSubExpr(), Found, Fn, Deduced);
     if (SubExpr == PE->getSubExpr())
       return PE;
 
@@ -15366,8 +15393,8 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
   }
 
   if (ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
-    Expr *SubExpr = FixOverloadedFunctionReference(ICE->getSubExpr(),
-                                                   Found, Fn);
+    Expr *SubExpr =
+        FixOverloadedFunctionReference(ICE->getSubExpr(), Found, Fn, Deduced);
     assert(Context.hasSameType(ICE->getSubExpr()->getType(),
                                SubExpr->getType()) &&
            "Implicit cast type cannot be determined from overload");
@@ -15382,8 +15409,8 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
 
   if (auto *GSE = dyn_cast<GenericSelectionExpr>(E)) {
     if (!GSE->isResultDependent()) {
-      Expr *SubExpr =
-          FixOverloadedFunctionReference(GSE->getResultExpr(), Found, Fn);
+      Expr *SubExpr = FixOverloadedFunctionReference(GSE->getResultExpr(),
+                                                     Found, Fn, Deduced);
       if (SubExpr == GSE->getResultExpr())
         return GSE;
 
@@ -15417,7 +15444,7 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
         // UnresolvedLookupExpr holding an overloaded member function
         // or template.
         Expr *SubExpr = FixOverloadedFunctionReference(UnOp->getSubExpr(),
-                                                       Found, Fn);
+                                                       Found, Fn, Deduced);
         if (SubExpr == UnOp->getSubExpr())
           return UnOp;
 
@@ -15442,8 +15469,8 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
             UnOp->getOperatorLoc(), false, CurFPFeatureOverrides());
       }
     }
-    Expr *SubExpr = FixOverloadedFunctionReference(UnOp->getSubExpr(),
-                                                   Found, Fn);
+    Expr *SubExpr =
+        FixOverloadedFunctionReference(UnOp->getSubExpr(), Found, Fn, Deduced);
     if (SubExpr == UnOp->getSubExpr())
       return UnOp;
 
@@ -15473,7 +15500,7 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
 
     DeclRefExpr *DRE = BuildDeclRefExpr(
         Fn, Type, ValueKind, ULE->getNameInfo(), ULE->getQualifierLoc(),
-        Found.getDecl(), ULE->getTemplateKeywordLoc(), TemplateArgs);
+        Found.getDecl(), ULE->getTemplateKeywordLoc(), TemplateArgs, Deduced);
     DRE->setHadMultipleCandidates(ULE->getNumDecls() > 1);
     return DRE;
   }
@@ -15495,7 +15522,7 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
         DeclRefExpr *DRE = BuildDeclRefExpr(
             Fn, Fn->getType(), VK_LValue, MemExpr->getNameInfo(),
             MemExpr->getQualifierLoc(), Found.getDecl(),
-            MemExpr->getTemplateKeywordLoc(), TemplateArgs);
+            MemExpr->getTemplateKeywordLoc(), TemplateArgs, Deduced);
         DRE->setHadMultipleCandidates(MemExpr->getNumDecls() > 1);
         return DRE;
       } else {
@@ -15528,10 +15555,11 @@ Expr *Sema::FixOverloadedFunctionReference(Expr *E, DeclAccessPair Found,
   llvm_unreachable("Invalid reference to overloaded function");
 }
 
-ExprResult Sema::FixOverloadedFunctionReference(ExprResult E,
-                                                DeclAccessPair Found,
-                                                FunctionDecl *Fn) {
-  return FixOverloadedFunctionReference(E.get(), Found, Fn);
+ExprResult
+Sema::FixOverloadedFunctionReference(ExprResult E, DeclAccessPair Found,
+                                     FunctionDecl *Fn,
+                                     const TemplateArgumentList *Deduced) {
+  return FixOverloadedFunctionReference(E.get(), Found, Fn, Deduced);
 }
 
 bool clang::shouldEnforceArgLimit(bool PartialOverloading,

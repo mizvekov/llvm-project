@@ -595,6 +595,7 @@ void ASTStmtReader::VisitDeclRefExpr(DeclRefExpr *E) {
   E->DeclRefExprBits.HadMultipleCandidates = Record.readInt();
   E->DeclRefExprBits.RefersToEnclosingVariableOrCapture = Record.readInt();
   E->DeclRefExprBits.NonOdrUseReason = Record.readInt();
+
   unsigned NumTemplateArgs = 0;
   if (E->hasTemplateKWAndArgsInfo())
     NumTemplateArgs = Record.readInt();
@@ -612,6 +613,7 @@ void ASTStmtReader::VisitDeclRefExpr(DeclRefExpr *E) {
         E->getTrailingObjects<TemplateArgumentLoc>(), NumTemplateArgs);
 
   E->D = readDeclAs<ValueDecl>();
+  E->ConvertedArgs = Record.readTemplateArgumentList();
   E->setLocation(readSourceLocation());
   E->DNLoc = Record.readDeclarationNameLoc(E->getDecl()->getDeclName());
 }
@@ -1024,6 +1026,7 @@ void ASTStmtReader::VisitMemberExpr(MemberExpr *E) {
   E->MemberExprBits.HadMultipleCandidates = Record.readInt();
   E->MemberExprBits.NonOdrUseReason = Record.readInt();
   E->MemberExprBits.OperatorLoc = Record.readSourceLocation();
+  E->Deduced = Record.readTemplateArgumentList();
 
   if (HasQualifier || HasFoundDecl) {
     DeclAccessPair FoundDecl;

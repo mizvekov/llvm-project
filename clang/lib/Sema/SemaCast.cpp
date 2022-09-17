@@ -1735,9 +1735,9 @@ TryStaticMemberPointerUpcast(Sema &Self, ExprResult &SrcExpr, QualType SrcType,
   bool WasOverloadedFunction = false;
   DeclAccessPair FoundOverload;
   if (SrcExpr.get()->getType() == Self.Context.OverloadTy) {
-    if (FunctionDecl *Fn
-          = Self.ResolveAddressOfOverloadedFunction(SrcExpr.get(), DestType, false,
-                                                    FoundOverload)) {
+    const TemplateArgumentList *ConvertedArgs;
+    if (FunctionDecl *Fn = Self.ResolveAddressOfOverloadedFunction(
+            SrcExpr.get(), DestType, false, FoundOverload, ConvertedArgs)) {
       CXXMethodDecl *M = cast<CXXMethodDecl>(Fn);
       SrcType = Self.Context.getMemberPointerType(Fn->getType(),
                       Self.Context.getTypeDeclType(M->getParent()).getTypePtr());
@@ -1814,16 +1814,16 @@ TryStaticMemberPointerUpcast(Sema &Self, ExprResult &SrcExpr, QualType SrcType,
   if (WasOverloadedFunction) {
     // Resolve the address of the overloaded function again, this time
     // allowing complaints if something goes wrong.
-    FunctionDecl *Fn = Self.ResolveAddressOfOverloadedFunction(SrcExpr.get(),
-                                                               DestType,
-                                                               true,
-                                                               FoundOverload);
+    const TemplateArgumentList *ConvertedArgs;
+    FunctionDecl *Fn = Self.ResolveAddressOfOverloadedFunction(
+        SrcExpr.get(), DestType, true, FoundOverload, ConvertedArgs);
     if (!Fn) {
       msg = 0;
       return TC_Failed;
     }
 
-    SrcExpr = Self.FixOverloadedFunctionReference(SrcExpr, FoundOverload, Fn);
+    SrcExpr = Self.FixOverloadedFunctionReference(SrcExpr, FoundOverload, Fn,
+                                                  ConvertedArgs);
     if (!SrcExpr.isUsable()) {
       msg = 0;
       return TC_Failed;
@@ -2788,10 +2788,10 @@ void CastOperation::CheckCXXCStyleCast(bool FunctionalStyle,
   if (tcr != TC_Success && msg != 0) {
     if (SrcExpr.get()->getType() == Self.Context.OverloadTy) {
       DeclAccessPair Found;
-      FunctionDecl *Fn = Self.ResolveAddressOfOverloadedFunction(SrcExpr.get(),
-                                DestType,
-                                /*Complain*/ true,
-                                Found);
+      const TemplateArgumentList *ConvertedArgs;
+      FunctionDecl *Fn = Self.ResolveAddressOfOverloadedFunction(
+          SrcExpr.get(), DestType,
+          /*Complain*/ true, Found, ConvertedArgs);
       if (Fn) {
         // If DestType is a function type (not to be confused with the function
         // pointer type), it will be possible to resolve the function address,
@@ -2897,10 +2897,12 @@ void CastOperation::CheckCStyleCast() {
 
   // Overloads are allowed with C extensions, so we need to support them.
   if (SrcExpr.get()->getType() == Self.Context.OverloadTy) {
+    const TemplateArgumentList *ConvertedArgs;
     DeclAccessPair DAP;
     if (FunctionDecl *FD = Self.ResolveAddressOfOverloadedFunction(
-            SrcExpr.get(), DestType, /*Complain=*/true, DAP))
-      SrcExpr = Self.FixOverloadedFunctionReference(SrcExpr.get(), DAP, FD);
+            SrcExpr.get(), DestType, /*Complain=*/true, DAP, ConvertedArgs))
+      SrcExpr = Self.FixOverloadedFunctionReference(SrcExpr.get(), DAP, FD,
+                                                    ConvertedArgs);
     else
       return;
     assert(SrcExpr.isUsable());

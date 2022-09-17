@@ -3597,9 +3597,14 @@ static void handleCleanupAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
       return;
     }
   } else if (auto *ULE = dyn_cast<UnresolvedLookupExpr>(E)) {
-    if (ULE->hasExplicitTemplateArgs())
+    if (ULE->hasExplicitTemplateArgs()) {
       S.Diag(Loc, diag::warn_cleanup_ext);
-    FD = S.ResolveSingleFunctionTemplateSpecialization(ULE, true);
+      TemplateArgumentListInfo ExplicitTemplateArgs;
+      const TemplateArgumentList *ConvertedArgs;
+      ULE->copyTemplateArgumentsInto(ExplicitTemplateArgs);
+      FD = S.ResolveSingleFunctionTemplateSpecialization(
+          ULE, ExplicitTemplateArgs, ConvertedArgs, /*Complain=*/true);
+    }
     NI = ULE->getNameInfo();
     if (!FD) {
       S.Diag(Loc, diag::err_attribute_cleanup_arg_not_function) << 2

@@ -483,7 +483,8 @@ DeclRefExpr::DeclRefExpr(const ASTContext &Ctx, ValueDecl *D,
                          ExprValueKind VK, SourceLocation L,
                          const DeclarationNameLoc &LocInfo,
                          NonOdrUseReason NOUR)
-    : Expr(DeclRefExprClass, T, VK, OK_Ordinary), D(D), DNLoc(LocInfo) {
+    : Expr(DeclRefExprClass, T, VK, OK_Ordinary), D(D), ConvertedArgs(nullptr),
+      DNLoc(LocInfo) {
   DeclRefExprBits.HasQualifier = false;
   DeclRefExprBits.HasTemplateKWAndArgsInfo = false;
   DeclRefExprBits.HasFoundDecl = false;
@@ -501,9 +502,12 @@ DeclRefExpr::DeclRefExpr(const ASTContext &Ctx,
                          bool RefersToEnclosingVariableOrCapture,
                          const DeclarationNameInfo &NameInfo, NamedDecl *FoundD,
                          const TemplateArgumentListInfo *TemplateArgs,
-                         QualType T, ExprValueKind VK, NonOdrUseReason NOUR)
+                         const TemplateArgumentList *ConvertedArgs, QualType T,
+                         ExprValueKind VK, NonOdrUseReason NOUR)
     : Expr(DeclRefExprClass, T, VK, OK_Ordinary), D(D),
-      DNLoc(NameInfo.getInfo()) {
+      ConvertedArgs(ConvertedArgs), DNLoc(NameInfo.getInfo()) {
+  assert(!TemplateArgs || ConvertedArgs);
+  assert(!ConvertedArgs || ConvertedArgs->size() != 0);
   DeclRefExprBits.Loc = NameInfo.getLoc();
   DeclRefExprBits.HasQualifier = QualifierLoc ? 1 : 0;
   if (QualifierLoc)
@@ -539,22 +543,21 @@ DeclRefExpr *DeclRefExpr::Create(const ASTContext &Context,
                                  SourceLocation NameLoc, QualType T,
                                  ExprValueKind VK, NamedDecl *FoundD,
                                  const TemplateArgumentListInfo *TemplateArgs,
+                                 const TemplateArgumentList *ConvertedArgs,
                                  NonOdrUseReason NOUR) {
   return Create(Context, QualifierLoc, TemplateKWLoc, D,
                 RefersToEnclosingVariableOrCapture,
-                DeclarationNameInfo(D->getDeclName(), NameLoc),
-                T, VK, FoundD, TemplateArgs, NOUR);
+                DeclarationNameInfo(D->getDeclName(), NameLoc), T, VK, FoundD,
+                TemplateArgs, ConvertedArgs, NOUR);
 }
 
-DeclRefExpr *DeclRefExpr::Create(const ASTContext &Context,
-                                 NestedNameSpecifierLoc QualifierLoc,
-                                 SourceLocation TemplateKWLoc, ValueDecl *D,
-                                 bool RefersToEnclosingVariableOrCapture,
-                                 const DeclarationNameInfo &NameInfo,
-                                 QualType T, ExprValueKind VK,
-                                 NamedDecl *FoundD,
-                                 const TemplateArgumentListInfo *TemplateArgs,
-                                 NonOdrUseReason NOUR) {
+DeclRefExpr *DeclRefExpr::Create(
+    const ASTContext &Context, NestedNameSpecifierLoc QualifierLoc,
+    SourceLocation TemplateKWLoc, ValueDecl *D,
+    bool RefersToEnclosingVariableOrCapture,
+    const DeclarationNameInfo &NameInfo, QualType T, ExprValueKind VK,
+    NamedDecl *FoundD, const TemplateArgumentListInfo *TemplateArgs,
+    const TemplateArgumentList *ConvertedArgs, NonOdrUseReason NOUR) {
   // Filter out cases where the found Decl is the same as the value refenenced.
   if (D == FoundD)
     FoundD = nullptr;
@@ -568,9 +571,10 @@ DeclRefExpr *DeclRefExpr::Create(const ASTContext &Context,
           TemplateArgs ? TemplateArgs->size() : 0);
 
   void *Mem = Context.Allocate(Size, alignof(DeclRefExpr));
-  return new (Mem) DeclRefExpr(Context, QualifierLoc, TemplateKWLoc, D,
-                               RefersToEnclosingVariableOrCapture, NameInfo,
-                               FoundD, TemplateArgs, T, VK, NOUR);
+  return new (Mem)
+      DeclRefExpr(Context, QualifierLoc, TemplateKWLoc, D,
+                  RefersToEnclosingVariableOrCapture, NameInfo, FoundD,
+                  TemplateArgs, ConvertedArgs, T, VK, NOUR);
 }
 
 DeclRefExpr *DeclRefExpr::CreateEmpty(const ASTContext &Context,
@@ -1694,11 +1698,13 @@ UnaryExprOrTypeTraitExpr::UnaryExprOrTypeTraitExpr(
 
 MemberExpr::MemberExpr(Expr *Base, bool IsArrow, SourceLocation OperatorLoc,
                        ValueDecl *MemberDecl,
-                       const DeclarationNameInfo &NameInfo, QualType T,
+                       const DeclarationNameInfo &NameInfo,
+                       const TemplateArgumentList *Deduced, QualType T,
                        ExprValueKind VK, ExprObjectKind OK,
                        NonOdrUseReason NOUR)
     : Expr(MemberExprClass, T, VK, OK), Base(Base), MemberDecl(MemberDecl),
-      MemberDNLoc(NameInfo.getInfo()), MemberLoc(NameInfo.getLoc()) {
+      Deduced(Deduced), MemberDNLoc(NameInfo.getInfo()),
+      MemberLoc(NameInfo.getLoc()) {
   assert(!NameInfo.getName() ||
          MemberDecl->getDeclName() == NameInfo.getName());
   MemberExprBits.IsArrow = IsArrow;
@@ -1715,7 +1721,8 @@ MemberExpr *MemberExpr::Create(
     NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKWLoc,
     ValueDecl *MemberDecl, DeclAccessPair FoundDecl,
     DeclarationNameInfo NameInfo, const TemplateArgumentListInfo *TemplateArgs,
-    QualType T, ExprValueKind VK, ExprObjectKind OK, NonOdrUseReason NOUR) {
+    const TemplateArgumentList *Deduced, QualType T, ExprValueKind VK,
+    ExprObjectKind OK, NonOdrUseReason NOUR) {
   bool HasQualOrFound = QualifierLoc || FoundDecl.getDecl() != MemberDecl ||
                         FoundDecl.getAccess() != MemberDecl->getAccess();
   bool HasTemplateKWAndArgsInfo = TemplateArgs || TemplateKWLoc.isValid();
@@ -1727,7 +1734,7 @@ MemberExpr *MemberExpr::Create(
 
   void *Mem = C.Allocate(Size, alignof(MemberExpr));
   MemberExpr *E = new (Mem) MemberExpr(Base, IsArrow, OperatorLoc, MemberDecl,
-                                       NameInfo, T, VK, OK, NOUR);
+                                       NameInfo, Deduced, T, VK, OK, NOUR);
 
   // FIXME: remove remaining dependence computation to computeDependence().
   auto Deps = E->getDependence();

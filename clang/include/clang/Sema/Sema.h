@@ -3928,7 +3928,8 @@ public:
                             bool AllowExplicitConversion = false,
                             ADLCallKind IsADLCandidate = ADLCallKind::NotADL,
                             ConversionSequenceList EarlyConversions = None,
-                            OverloadCandidateParamOrder PO = {});
+                            OverloadCandidateParamOrder PO = {},
+                            const TemplateArgumentList *Deduced = nullptr);
   void AddFunctionCandidates(const UnresolvedSetImpl &Functions,
                       ArrayRef<Expr *> Args,
                       OverloadCandidateSet &CandidateSet,
@@ -3943,16 +3944,16 @@ public:
                           OverloadCandidateSet& CandidateSet,
                           bool SuppressUserConversion = false,
                           OverloadCandidateParamOrder PO = {});
-  void AddMethodCandidate(CXXMethodDecl *Method,
-                          DeclAccessPair FoundDecl,
+  void AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
                           CXXRecordDecl *ActingContext, QualType ObjectType,
                           Expr::Classification ObjectClassification,
                           ArrayRef<Expr *> Args,
-                          OverloadCandidateSet& CandidateSet,
+                          OverloadCandidateSet &CandidateSet,
                           bool SuppressUserConversions = false,
                           bool PartialOverloading = false,
                           ConversionSequenceList EarlyConversions = None,
-                          OverloadCandidateParamOrder PO = {});
+                          OverloadCandidateParamOrder PO = {},
+                          const TemplateArgumentList *Deduced = nullptr);
   void AddMethodTemplateCandidate(FunctionTemplateDecl *MethodTmpl,
                                   DeclAccessPair FoundDecl,
                                   CXXRecordDecl *ActingContext,
@@ -4076,10 +4077,9 @@ public:
   QualType ExtractUnqualifiedFunctionType(QualType PossiblyAFunctionType);
 
   FunctionDecl *
-  ResolveAddressOfOverloadedFunction(Expr *AddressOfExpr,
-                                     QualType TargetType,
-                                     bool Complain,
-                                     DeclAccessPair &Found,
+  ResolveAddressOfOverloadedFunction(Expr *AddressOfExpr, QualType TargetType,
+                                     bool Complain, DeclAccessPair &Found,
+                                     const TemplateArgumentList *&ConvertedArgs,
                                      bool *pHadMultipleCandidates = nullptr);
 
   FunctionDecl *
@@ -4088,10 +4088,10 @@ public:
   bool resolveAndFixAddressOfSingleOverloadCandidate(
       ExprResult &SrcExpr, bool DoFunctionPointerConversion = false);
 
-  FunctionDecl *
-  ResolveSingleFunctionTemplateSpecialization(OverloadExpr *ovl,
-                                              bool Complain = false,
-                                              DeclAccessPair *Found = nullptr);
+  FunctionDecl *ResolveSingleFunctionTemplateSpecialization(
+      OverloadExpr *ovl, TemplateArgumentListInfo &ExplicitTemplateArgs,
+      const TemplateArgumentList *&ConvertedArgs, bool Complain = false,
+      DeclAccessPair *Found = nullptr);
 
   bool ResolveAndFixSingleFunctionTemplateSpecialization(
       ExprResult &SrcExpr, bool DoFunctionPointerConversion = false,
@@ -4099,12 +4099,13 @@ public:
       QualType DestTypeForComplaining = QualType(),
       unsigned DiagIDForComplaining = 0);
 
-  Expr *FixOverloadedFunctionReference(Expr *E,
-                                       DeclAccessPair FoundDecl,
-                                       FunctionDecl *Fn);
-  ExprResult FixOverloadedFunctionReference(ExprResult,
-                                            DeclAccessPair FoundDecl,
-                                            FunctionDecl *Fn);
+  Expr *FixOverloadedFunctionReference(Expr *E, DeclAccessPair FoundDecl,
+                                       FunctionDecl *Fn,
+                                       const TemplateArgumentList *Deduced);
+  ExprResult
+  FixOverloadedFunctionReference(ExprResult, DeclAccessPair FoundDecl,
+                                 FunctionDecl *Fn,
+                                 const TemplateArgumentList *Deduced);
 
   void AddOverloadedCallCandidates(UnresolvedLookupExpr *ULE,
                                    ArrayRef<Expr *> Args,
@@ -5533,14 +5534,15 @@ public:
                    const CXXScopeSpec *SS = nullptr,
                    NamedDecl *FoundD = nullptr,
                    SourceLocation TemplateKWLoc = SourceLocation(),
-                   const TemplateArgumentListInfo *TemplateArgs = nullptr);
+                   const TemplateArgumentListInfo *TemplateArgs = nullptr,
+                   const TemplateArgumentList *ConvertedArgs = nullptr);
   DeclRefExpr *
   BuildDeclRefExpr(ValueDecl *D, QualType Ty, ExprValueKind VK,
                    const DeclarationNameInfo &NameInfo,
-                   NestedNameSpecifierLoc NNS,
-                   NamedDecl *FoundD = nullptr,
+                   NestedNameSpecifierLoc NNS, NamedDecl *FoundD = nullptr,
                    SourceLocation TemplateKWLoc = SourceLocation(),
-                   const TemplateArgumentListInfo *TemplateArgs = nullptr);
+                   const TemplateArgumentListInfo *TemplateArgs = nullptr,
+                   const TemplateArgumentList *ConvertedArgs = nullptr);
 
   ExprResult
   BuildAnonymousStructUnionMemberReference(
@@ -5584,6 +5586,7 @@ public:
       const CXXScopeSpec &SS, const DeclarationNameInfo &NameInfo, NamedDecl *D,
       NamedDecl *FoundD = nullptr,
       const TemplateArgumentListInfo *TemplateArgs = nullptr,
+      const TemplateArgumentList *ConvertedArgs = nullptr,
       bool AcceptInvalidDecl = false);
 
   ExprResult BuildLiteralOperatorCall(LookupResult &R,
@@ -5767,22 +5770,20 @@ public:
                                    UnqualifiedId &Member,
                                    Decl *ObjCImpDecl);
 
-  MemberExpr *
-  BuildMemberExpr(Expr *Base, bool IsArrow, SourceLocation OpLoc,
-                  const CXXScopeSpec *SS, SourceLocation TemplateKWLoc,
-                  ValueDecl *Member, DeclAccessPair FoundDecl,
-                  bool HadMultipleCandidates,
-                  const DeclarationNameInfo &MemberNameInfo, QualType Ty,
-                  ExprValueKind VK, ExprObjectKind OK,
-                  const TemplateArgumentListInfo *TemplateArgs = nullptr);
-  MemberExpr *
-  BuildMemberExpr(Expr *Base, bool IsArrow, SourceLocation OpLoc,
-                  NestedNameSpecifierLoc NNS, SourceLocation TemplateKWLoc,
-                  ValueDecl *Member, DeclAccessPair FoundDecl,
-                  bool HadMultipleCandidates,
-                  const DeclarationNameInfo &MemberNameInfo, QualType Ty,
-                  ExprValueKind VK, ExprObjectKind OK,
-                  const TemplateArgumentListInfo *TemplateArgs = nullptr);
+  MemberExpr *BuildMemberExpr(
+      Expr *Base, bool IsArrow, SourceLocation OpLoc, const CXXScopeSpec *SS,
+      SourceLocation TemplateKWLoc, ValueDecl *Member, DeclAccessPair FoundDecl,
+      bool HadMultipleCandidates, const DeclarationNameInfo &MemberNameInfo,
+      QualType Ty, ExprValueKind VK, ExprObjectKind OK,
+      const TemplateArgumentListInfo *TemplateArgs = nullptr,
+      const TemplateArgumentList *Deduced = nullptr);
+  MemberExpr *BuildMemberExpr(
+      Expr *Base, bool IsArrow, SourceLocation OpLoc,
+      NestedNameSpecifierLoc NNS, SourceLocation TemplateKWLoc,
+      ValueDecl *Member, DeclAccessPair FoundDecl, bool HadMultipleCandidates,
+      const DeclarationNameInfo &MemberNameInfo, QualType Ty, ExprValueKind VK,
+      ExprObjectKind OK, const TemplateArgumentListInfo *TemplateArgs = nullptr,
+      const TemplateArgumentList *Deduced = nullptr);
 
   void ActOnDefaultCtorInitializers(Decl *CDtorDecl);
   bool ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
@@ -8115,7 +8116,8 @@ public:
   DeclResult CheckVarTemplateId(VarTemplateDecl *Template,
                                 SourceLocation TemplateLoc,
                                 SourceLocation TemplateNameLoc,
-                                const TemplateArgumentListInfo &TemplateArgs);
+                                const TemplateArgumentListInfo &TemplateArgs,
+                                const TemplateArgumentList *&ConvertedArgs);
 
   /// Form a reference to the specialization of the given variable template
   /// corresponding to the specified argument list, or a null-but-valid result
@@ -12963,7 +12965,8 @@ public:
   /// calling priority.
   void EraseUnwantedCUDAMatches(
       const FunctionDecl *Caller,
-      SmallVectorImpl<std::pair<DeclAccessPair, FunctionDecl *>> &Matches);
+      SmallVectorImpl<std::tuple<DeclAccessPair, FunctionDecl *,
+                                 const TemplateArgumentList *>> &Matches);
 
   /// Given a implicit special member, infer its CUDA target from the
   /// calls it needs to make to underlying base/field special members.
