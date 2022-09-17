@@ -610,6 +610,8 @@ public:
   Profile(llvm::FoldingSetNodeID &ID, ArrayRef<TemplateArgument> TemplateArgs,
           const ASTContext &Context) {
     ID.AddInteger(TemplateArgs.size());
+    // We allow instantiating deduction guides with non-canonical template
+    // arguments.
     for (const TemplateArgument &TemplateArg : TemplateArgs)
       TemplateArg.Profile(ID, Context);
   }

@@ -1937,6 +1937,17 @@ TagDecl *Type::getAsTagDecl() const {
   return nullptr;
 }
 
+const TemplateSpecializationType *
+Type::getAsNonAliasTemplateSpecializationType() const {
+  for (auto T = this; /**/; /**/) {
+    const TemplateSpecializationType *TST =
+        T->getAs<TemplateSpecializationType>();
+    if (!TST || !TST->isTypeAlias())
+      return TST;
+    T = TST->desugar().getTypePtr();
+  }
+}
+
 bool Type::hasAttr(attr::Kind AK) const {
   const Type *Cur = this;
   while (const auto *AT = Cur->getAs<AttributedType>()) {
@@ -4384,17 +4395,19 @@ bool TemplateSpecializationType::anyInstantiationDependentTemplateArguments(
 }
 
 TemplateSpecializationType::TemplateSpecializationType(
-    TemplateName T, ArrayRef<TemplateArgument> Args, QualType Canon,
-    QualType AliasedType)
-    : Type(TemplateSpecialization, Canon.isNull() ? QualType(this, 0) : Canon,
-           (Canon.isNull()
+    TemplateName T, bool IsAlias, ArrayRef<TemplateArgument> Args,
+    QualType Underlying)
+    : Type(TemplateSpecialization,
+           Underlying.isNull() ? QualType(this, 0)
+                               : Underlying.getCanonicalType(),
+           (Underlying.isNull()
                 ? TypeDependence::DependentInstantiation
-                : toSemanticDependence(Canon->getDependence())) |
+                : toSemanticDependence(Underlying->getDependence())) |
                (toTypeDependence(T.getDependence()) &
                 TypeDependence::UnexpandedPack)),
       Template(T) {
   TemplateSpecializationTypeBits.NumArgs = Args.size();
-  TemplateSpecializationTypeBits.TypeAlias = !AliasedType.isNull();
+  TemplateSpecializationTypeBits.TypeAlias = IsAlias;
 
   assert(!T.getAsDependentTemplateName() &&
          "Use DependentTemplateSpecializationType for dependent template-name");
@@ -4406,29 +4419,33 @@ TemplateSpecializationType::TemplateSpecializationType(
           T.getKind() == TemplateName::DeducedTemplate) &&
          "Unexpected template name for TemplateSpecializationType");
 
-  auto *TemplateArgs = reinterpret_cast<TemplateArgument *>(this + 1);
-  for (const TemplateArgument &Arg : Args) {
-    // Update instantiation-dependent, variably-modified, and error bits.
-    // If the canonical type exists and is non-dependent, the template
-    // specialization type can be non-dependent even if one of the type
-    // arguments is. Given:
-    //   template<typename T> using U = int;
-    // U<T> is always non-dependent, irrespective of the type T.
-    // However, U<Ts> contains an unexpanded parameter pack, even though
-    // its expansion (and thus its desugared type) doesn't.
-    addDependence(toTypeDependence(Arg.getDependence()) &
-                  ~TypeDependence::Dependent);
-    if (Arg.getKind() == TemplateArgument::Type)
-      addDependence(Arg.getAsType()->getDependence() &
-                    TypeDependence::VariablyModified);
-    new (TemplateArgs++) TemplateArgument(Arg);
-  }
+  auto initArgs = [this](ArrayRef<TemplateArgument> Out,
+                         ArrayRef<TemplateArgument> In) {
+    auto *Args = const_cast<TemplateArgument *>(Out.data());
+    for (const TemplateArgument &Arg : In) {
+      // Update instantiation-dependent, variably-modified, and error bits.
+      // If the canonical type exists and is non-dependent, the template
+      // specialization type can be non-dependent even if one of the type
+      // arguments is. Given:
+      //   template<typename T> using U = int;
+      // U<T> is always non-dependent, irrespective of the type T.
+      // However, U<Ts> contains an unexpanded parameter pack, even though
+      // its expansion (and thus its desugared type) doesn't.
+      addDependence(toTypeDependence(Arg.getDependence()) &
+                    ~TypeDependence::Dependent);
+      if (Arg.getKind() == TemplateArgument::Type)
+        addDependence(Arg.getAsType()->getDependence() &
+                      TypeDependence::VariablyModified);
+      new (Args++) TemplateArgument(Arg);
+    }
+  };
+
+  initArgs(template_arguments(), Args);
 
   // Store the aliased type if this is a type alias template specialization.
-  if (isTypeAlias()) {
-    auto *Begin = reinterpret_cast<TemplateArgument *>(this + 1);
-    *reinterpret_cast<QualType *>(Begin + Args.size()) = AliasedType;
-  }
+  if (IsAlias)
+    *reinterpret_cast<QualType *>(const_cast<TemplateArgument *>(
+        template_arguments().end())) = Underlying;
 }
 
 QualType TemplateSpecializationType::getAliasedType() const {
@@ -4438,17 +4455,19 @@ QualType TemplateSpecializationType::getAliasedType() const {
 
 void TemplateSpecializationType::Profile(llvm::FoldingSetNodeID &ID,
                                          const ASTContext &Ctx) {
-  Profile(ID, Template, template_arguments(), Ctx);
-  if (isTypeAlias())
-    getAliasedType().Profile(ID);
+  Profile(ID, Template, template_arguments(),
+          isSugared() ? desugar() : QualType(), Ctx);
 }
 
-void
-TemplateSpecializationType::Profile(llvm::FoldingSetNodeID &ID,
-                                    TemplateName T,
-                                    ArrayRef<TemplateArgument> Args,
-                                    const ASTContext &Context) {
+void TemplateSpecializationType::Profile(llvm::FoldingSetNodeID &ID,
+                                         TemplateName T,
+                                         ArrayRef<TemplateArgument> Args,
+                                         QualType Underlying,
+                                         const ASTContext &Context) {
   T.Profile(ID);
+  Underlying.Profile(ID);
+
+  ID.AddInteger(Args.size());
   for (const TemplateArgument &Arg : Args)
     Arg.Profile(ID, Context);
 }
@@ -5260,9 +5279,9 @@ AutoType::AutoType(QualType DeducedAsType, AutoTypeKeyword Keyword,
 }
 
 void AutoType::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
-                      QualType Deduced, AutoTypeKeyword Keyword,
-                      bool IsDependent, ConceptDecl *CD,
-                      ArrayRef<TemplateArgument> Arguments) {
+                       QualType Deduced, AutoTypeKeyword Keyword,
+                       bool IsDependent, ConceptDecl *CD,
+                       ArrayRef<TemplateArgument> Arguments) {
   ID.AddPointer(Deduced.getAsOpaquePtr());
   ID.AddInteger((unsigned)Keyword);
   ID.AddBoolean(IsDependent);

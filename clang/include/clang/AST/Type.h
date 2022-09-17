@@ -2825,6 +2825,18 @@ public:
   /// immediately following this class.
   template <typename T> const T *getAs() const;
 
+  /// Look through sugar for an instance of TemplateSpecializationType which
+  /// is not a type alias.
+  const TemplateSpecializationType *
+  getAsNonAliasTemplateSpecializationType() const;
+
+  const TemplateSpecializationType *
+  castAsNonAliasTemplateSpecializationType() const {
+    auto TST = getAsNonAliasTemplateSpecializationType();
+    assert(TST && "not a TemplateSpecializationType");
+    return TST;
+  }
+
   /// Member-template getAsAdjusted<specific type>. Look through specific kinds
   /// of sugar (parens, attributes, etc) for an instance of \<specific type>.
   /// This is used when you need to walk over sugar nodes that represent some
@@ -6676,10 +6688,9 @@ class TemplateSpecializationType : public Type, public llvm::FoldingSetNode {
   /// replacement must, recursively, be one of these).
   TemplateName Template;
 
-  TemplateSpecializationType(TemplateName T,
+  TemplateSpecializationType(TemplateName T, bool IsAlias,
                              ArrayRef<TemplateArgument> Args,
-                             QualType Canon,
-                             QualType Aliased);
+                             QualType Underlying);
 
 public:
   /// Determine whether any of the given template arguments are dependent.
@@ -6747,7 +6758,7 @@ public:
 
   void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Ctx);
   static void Profile(llvm::FoldingSetNodeID &ID, TemplateName T,
-                      ArrayRef<TemplateArgument> Args,
+                      ArrayRef<TemplateArgument> Args, QualType Underlying,
                       const ASTContext &Context);
 
   static bool classof(const Type *T) {
