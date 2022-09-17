@@ -560,16 +560,16 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
   QualType UP = P;
   if (const auto *IP = P->getAs<InjectedClassNameType>())
     UP = IP->getInjectedSpecializationType();
-  // FIXME: Try to preserve type sugar here, which is hard
-  // because of the unresolved template arguments.
-  const auto *TP = UP.getCanonicalType()->castAs<TemplateSpecializationType>();
+  assert(isa<TemplateSpecializationType>(UP.getCanonicalType()));
+  const TemplateSpecializationType *TP =
+      UP->castAsNonAliasTemplateSpecializationType();
   TemplateName TNP = TP->getTemplateName();
 
   // If the parameter is an alias template, there is nothing to deduce.
   if (const auto *TD = TNP.getAsTemplateDecl(); TD && TD->isTypeAlias())
     return Sema::TDK_Success;
 
-  ArrayRef<TemplateArgument> PResolved = TP->template_arguments();
+  ArrayRef<TemplateArgument> PResolved = TP->getConvertedArguments();
 
   QualType UA = A;
   // Treat an injected-class-name as its underlying template-id.
@@ -577,9 +577,7 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
     UA = Injected->getInjectedSpecializationType();
 
   // Check whether the template argument is a dependent template-id.
-  // FIXME: Should not lose sugar here.
-  if (const auto *SA =
-          dyn_cast<TemplateSpecializationType>(UA.getCanonicalType())) {
+  if (const auto *SA = UA->getAsNonAliasTemplateSpecializationType()) {
     TemplateName TNA = SA->getTemplateName();
 
     // If the argument is an alias template, there is nothing to deduce.
@@ -594,7 +592,7 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
     // argument. Ignore any missing/extra arguments, since they could be
     // filled in by default arguments.
     return DeduceTemplateArguments(S, TemplateParams, PResolved,
-                                   SA->template_arguments(), Info, Deduced,
+                                   SA->getConvertedArguments(), Info, Deduced,
                                    /*NumberOfArgumentsMustMatch=*/false);
   }
 
@@ -5255,11 +5253,11 @@ FunctionTemplateDecl *Sema::getMoreSpecializedTemplate(
       auto *TST2 = dyn_cast<TemplateSpecializationType>(T2);
       if (!TST1 || !TST2)
         continue;
-      const TemplateArgument &TA1 = TST1->template_arguments().back();
+      const TemplateArgument &TA1 = TST1->getConvertedArguments().back();
       if (TA1.getKind() == TemplateArgument::Pack) {
-        assert(TST1->template_arguments().size() ==
-               TST2->template_arguments().size());
-        const TemplateArgument &TA2 = TST2->template_arguments().back();
+        assert(TST1->getConvertedArguments().size() ==
+               TST2->getConvertedArguments().size());
+        const TemplateArgument &TA2 = TST2->getConvertedArguments().back();
         assert(TA2.getKind() == TemplateArgument::Pack);
         unsigned PackSize1 = TA1.pack_size();
         unsigned PackSize2 = TA2.pack_size();
@@ -5501,7 +5499,7 @@ static bool isAtLeastAsSpecializedAs(Sema &S, QualType T1, QualType T2,
     AtLeastAsSpecialized = !FinishTemplateArgumentDeduction(
         S, P2, /*IsPartialOrdering=*/true,
         TemplateArgumentList(TemplateArgumentList::OnStack,
-                             TST1->template_arguments()),
+                             TST1->getConvertedArguments()),
         Deduced, Info);
   });
   return AtLeastAsSpecialized;
@@ -5623,11 +5621,11 @@ getMoreSpecialized(Sema &S, QualType T1, QualType T2, TemplateLikeDecl *P1,
   if (!ClangABICompat15) {
     auto *TST1 = cast<TemplateSpecializationType>(T1);
     auto *TST2 = cast<TemplateSpecializationType>(T2);
-    const TemplateArgument &TA1 = TST1->template_arguments().back();
+    const TemplateArgument &TA1 = TST1->getConvertedArguments().back();
     if (TA1.getKind() == TemplateArgument::Pack) {
-      assert(TST1->template_arguments().size() ==
-             TST2->template_arguments().size());
-      const TemplateArgument &TA2 = TST2->template_arguments().back();
+      assert(TST1->getConvertedArguments().size() ==
+             TST2->getConvertedArguments().size());
+      const TemplateArgument &TA2 = TST2->getConvertedArguments().back();
       assert(TA2.getKind() == TemplateArgument::Pack);
       unsigned PackSize1 = TA1.pack_size();
       unsigned PackSize2 = TA2.pack_size();
@@ -5732,9 +5730,11 @@ Sema::getMoreSpecializedPartialSpecialization(
   TemplateName Name(PS1->getSpecializedTemplate());
   TemplateName CanonTemplate = Context.getCanonicalTemplateName(Name);
   QualType PT1 = Context.getTemplateSpecializationType(
-      CanonTemplate, PS1->getTemplateArgs().asArray());
+      CanonTemplate, ArrayRef<TemplateArgument>(), None,
+      PS1->getTemplateArgs().asArray());
   QualType PT2 = Context.getTemplateSpecializationType(
-      CanonTemplate, PS2->getTemplateArgs().asArray());
+      CanonTemplate, ArrayRef<TemplateArgument>(), None,
+      PS2->getTemplateArgs().asArray());
 
   TemplateDeductionInfo Info(Loc);
   return getMoreSpecialized(*this, PT1, PT2, PS1, PS2, Info);
@@ -5745,10 +5745,14 @@ bool Sema::isMoreSpecializedThanPrimary(
   VarTemplateDecl *Primary = Spec->getSpecializedTemplate();
   TemplateName CanonTemplate =
       Context.getCanonicalTemplateName(TemplateName(Primary));
-  QualType PrimaryT = Context.getTemplateSpecializationType(
-      CanonTemplate, Primary->getInjectedTemplateArgs());
+  QualType PrimaryT = Context
+                          .getTemplateSpecializationType(
+                              CanonTemplate, ArrayRef<TemplateArgument>(),
+                              Primary->getInjectedTemplateArgs(), None)
+                          .getCanonicalType();
   QualType PartialT = Context.getTemplateSpecializationType(
-      CanonTemplate, Spec->getTemplateArgs().asArray());
+      CanonTemplate, ArrayRef<TemplateArgument>(), None,
+      Spec->getTemplateArgs().asArray());
 
   VarTemplatePartialSpecializationDecl *MaybeSpec =
       getMoreSpecialized(*this, PartialT, PrimaryT, Spec, Primary, Info);
@@ -5778,6 +5782,7 @@ bool Sema::isTemplateTemplateParameterAtLeastAsSpecializedAs(
   //      template parameters from the respective function template
   SmallVector<TemplateArgument, 8> AArgs;
   Context.getInjectedTemplateArgs(A, AArgs);
+  Context.canonicalizeTemplateArguments(AArgs);
 
   // Check P's arguments against A's parameter list. This will fill in default
   // template arguments as needed. AArgs are already correct by construction.
@@ -5788,6 +5793,7 @@ bool Sema::isTemplateTemplateParameterAtLeastAsSpecializedAs(
     SFINAETrap Trap(*this);
 
     Context.getInjectedTemplateArgs(P, PArgs);
+    Context.canonicalizeTemplateArguments(PArgs);
     TemplateArgumentListInfo PArgList(P->getLAngleLoc(),
                                       P->getRAngleLoc());
     for (unsigned I = 0, N = P->size(); I != N; ++I) {
@@ -5813,8 +5819,10 @@ bool Sema::isTemplateTemplateParameterAtLeastAsSpecializedAs(
       return false;
   }
 
-  QualType AType = Context.getCanonicalTemplateSpecializationType(X, AArgs);
-  QualType PType = Context.getCanonicalTemplateSpecializationType(X, PArgs);
+  QualType AType = Context.getTemplateSpecializationType(
+      X, ArrayRef<TemplateArgument>(), None, AArgs);
+  QualType PType = Context.getTemplateSpecializationType(
+      X, ArrayRef<TemplateArgument>(), None, PArgs);
 
   //   ... the function template corresponding to P is at least as specialized
   //   as the function template corresponding to A according to the partial
@@ -6107,11 +6115,10 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
     //   If the template argument list of P contains a pack expansion that is
     //   not the last template argument, the entire template argument list is a
     //   non-deduced context.
-    if (OnlyDeduced &&
-        hasPackExpansionBeforeEnd(Spec->template_arguments()))
+    if (OnlyDeduced && hasPackExpansionBeforeEnd(Spec->getConvertedArguments()))
       break;
 
-    for (const auto &Arg : Spec->template_arguments())
+    for (const TemplateArgument &Arg : Spec->getConvertedArguments())
       MarkUsedTemplateParameters(Ctx, Arg, OnlyDeduced, Depth, Used);
     break;
   }

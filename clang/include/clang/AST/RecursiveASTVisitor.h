@@ -1099,7 +1099,10 @@ DEF_TRAVERSE_TYPE(SubstTemplateTypeParmPackType, {
 
 DEF_TRAVERSE_TYPE(TemplateSpecializationType, {
   TRY_TO(TraverseTemplateName(T->getTemplateName()));
-  TRY_TO(TraverseTemplateArguments(T->template_arguments()));
+  if (T->isCanonicalUnqualified())
+    TRY_TO(TraverseTemplateArguments(T->getConvertedArguments()));
+  else
+    TRY_TO(TraverseTemplateArguments(T->template_arguments()));
 })
 
 DEF_TRAVERSE_TYPE(InjectedClassNameType, {})

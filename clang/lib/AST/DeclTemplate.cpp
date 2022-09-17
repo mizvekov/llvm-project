@@ -627,9 +627,11 @@ ClassTemplateDecl::getInjectedClassNameSpecialization() {
   TemplateParameterList *Params = getTemplateParameters();
   SmallVector<TemplateArgument, 16> TemplateArgs;
   Context.getInjectedTemplateArgs(Params, TemplateArgs);
-  CommonPtr->InjectedClassNameType
-    = Context.getTemplateSpecializationType(TemplateName(this),
-                                            TemplateArgs);
+  CommonPtr->InjectedClassNameType = Context.getTemplateSpecializationType(
+      TemplateName(this),
+      /*SpecifiedArgs=*/TemplateArgs,
+      /*SugaredConvertedArgs=*/TemplateArgs,
+      /*CanonicalConvertedArgs=*/None);
   return CommonPtr->InjectedClassNameType;
 }
 
