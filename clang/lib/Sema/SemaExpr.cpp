@@ -14424,8 +14424,24 @@ QualType Sema::CheckAddressOfOperand(ExprResult &OrigOp, SourceLocation OpLoc) {
     if (isa<CXXDestructorDecl>(MD))
       Diag(OpLoc, diag::err_typecheck_addrof_dtor) << op->getSourceRange();
 
-    QualType MPTy = Context.getMemberPointerType(
-        op->getType(), Context.getTypeDeclType(MD->getParent()).getTypePtr());
+    const CXXRecordDecl *Cls = MD->getParent();
+    const Type *ClsType = nullptr;
+    if (const NestedNameSpecifier *NNS = DRE->getQualifier()) {
+      const Type *Type = NNS->getAsType();
+      const CXXRecordDecl *ClsAsWritten =
+          Type ? Type->getAsCXXRecordDecl() : NNS->getAsRecordDecl();
+      assert(ClsAsWritten != nullptr);
+      if (declaresSameEntity(Cls, ClsAsWritten))
+        ClsType =
+            Type ? Type : Context.getTypeDeclType(ClsAsWritten).getTypePtr();
+      else
+        // FIXME: Can we do better here?
+        assert(ClsAsWritten->isDerivedFrom(Cls));
+    }
+    if (!ClsType)
+      ClsType = Context.getTypeDeclType(Cls).getTypePtr();
+
+    QualType MPTy = Context.getMemberPointerType(op->getType(), ClsType);
     // Under the MS ABI, lock down the inheritance model now.
     if (Context.getTargetInfo().getCXXABI().isMicrosoft())
       (void)isCompleteType(OpLoc, MPTy);

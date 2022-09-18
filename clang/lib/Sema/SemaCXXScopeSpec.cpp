@@ -99,8 +99,7 @@ DeclContext *Sema::computeDeclContext(const CXXScopeSpec &SS,
         if (ClassTemplateDecl *ClassTemplate
               = dyn_cast_or_null<ClassTemplateDecl>(
                             SpecType->getTemplateName().getAsTemplateDecl())) {
-          QualType ContextType
-            = Context.getCanonicalType(QualType(SpecType, 0));
+          auto ContextType = QualType(SpecType, 0);
 
           // If the type of the nested name specifier is the same as the
           // injected class name of the named class template, we're entering

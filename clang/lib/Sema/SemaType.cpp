@@ -9203,6 +9203,56 @@ QualType Sema::BuildTypeofExprType(Expr *E, TypeOfKind Kind) {
   return Context.getTypeOfExprType(E, Kind);
 }
 
+static QualType getSameReferencedType(ASTContext &Context, QualType VT,
+                                      QualType ET) {
+  assert(!ET->isReferenceType());
+  if (const auto *VTL = VT->getAs<LValueReferenceType>())
+    ET = Context.getLValueReferenceType(ET, VTL->isSpelledAsLValue());
+  else if (VT->isRValueReferenceType())
+    ET = Context.getRValueReferenceType(ET);
+
+  if (!Context.hasSameUnqualifiedType(ET, VT)) {
+    ET.dump();
+    VT.dump();
+    assert(false && "!hasSameUnqualifiedType");
+  }
+
+  Qualifiers ToAdd = VT.getQualifiers(), ToRemove = ET.getQualifiers();
+  (void)Qualifiers::removeCommonQualifiers(ToAdd, ToRemove);
+
+  SplitQualType Split = ET.split();
+  while (!ToRemove.empty()) {
+    (void)Qualifiers::removeCommonQualifiers(Split.Quals, ToRemove);
+    if (ToRemove.empty())
+      break;
+    QualType Next;
+    switch (ET->getTypeClass()) {
+#define ABSTRACT_TYPE(Class, Parent)
+#define TYPE(Class, Parent)                                                    \
+  case Type::Class: {                                                          \
+    const auto *ty = cast<Class##Type>(ET);                                    \
+    if (!ty->isSugared())                                                      \
+      goto done;                                                               \
+    Next = ty->desugar();                                                      \
+    break;                                                                     \
+  }
+#include "clang/AST/TypeNodes.inc"
+    }
+    Split = Next.split();
+  }
+done:
+  assert(ToRemove.empty());
+  Split.Quals += ToAdd;
+  ET = Context.getQualifiedType(Split);
+
+  if (!Context.hasSameType(ET, VT)) {
+    ET.dump();
+    VT.dump();
+    assert(false && "!hasSameType");
+  }
+  return ET;
+}
+
 /// getDecltypeForExpr - Given an expr, will return the decltype for
 /// that expression, according to the rules in C++11
 /// [dcl.type.simple]p4 and C++11 [expr.lambda.prim]p18.
@@ -9235,18 +9285,20 @@ QualType Sema::getDecltypeForExpr(Expr *E) {
   // We apply the same rules for Objective-C ivar and property references.
   if (const auto *DRE = dyn_cast<DeclRefExpr>(IDExpr)) {
     const ValueDecl *VD = DRE->getDecl();
-    QualType T = VD->getType();
+    QualType T = getSameReferencedType(Context, VD->getType(), DRE->getType());
     return isa<TemplateParamObjectDecl>(VD) ? T.getUnqualifiedType() : T;
   }
   if (const auto *ME = dyn_cast<MemberExpr>(IDExpr)) {
     if (const auto *VD = ME->getMemberDecl())
       if (isa<FieldDecl>(VD) || isa<VarDecl>(VD))
-        return VD->getType();
+        return getSameReferencedType(Context, VD->getType(), ME->getType());
   } else if (const auto *IR = dyn_cast<ObjCIvarRefExpr>(IDExpr)) {
+    // FIXME: Sugar these. Breaks Modules/odr_hash.mm.
     return IR->getDecl()->getType();
   } else if (const auto *PR = dyn_cast<ObjCPropertyRefExpr>(IDExpr)) {
     if (PR->isExplicitProperty())
-      return PR->getExplicitProperty()->getType();
+      return getSameReferencedType(
+          Context, PR->getExplicitProperty()->getType(), PR->getType());
   } else if (const auto *PE = dyn_cast<PredefinedExpr>(IDExpr)) {
     return PE->getType();
   }
