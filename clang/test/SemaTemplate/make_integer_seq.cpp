@@ -46,9 +46,9 @@ using test2 = B<int, 1>;
 // CHECK-NEXT:           |-TemplateArgument expr
 // CHECK-NEXT:           | `-ConstantExpr 0x{{[0-9A-Fa-f]+}} <line:28:64> 'int'
 // CHECK-NEXT:           |   |-value: Int 1
-// CHECK-NEXT:           |   `-SubstNonTypeTemplateParmExpr 0x{{[0-9A-Fa-f]+}} <col:64> 'int'
+// CHECK-NEXT:           |   `-SubstNonTypeTemplateParmExpr 0x{{[0-9A-Fa-f]+}} <col:64> 'int':'int'
 // CHECK-NEXT:           |     |-NonTypeTemplateParmDecl 0x{{[0-9A-Fa-f]+}} <col:21, col:24> col:24 referenced 'B1' depth 0 index 1 B2
-// CHECK-NEXT:           |     `-IntegerLiteral 0x{{[0-9A-Fa-f]+}} <col:64> 'int' 1
+// CHECK-NEXT:           |     `-IntegerLiteral 0x{{[0-9A-Fa-f]+}} <col:64> 'int':'int' 1
 // CHECK-NEXT:           `-TemplateSpecializationType 0x{{[0-9A-Fa-f]+}} 'A<int, 0>' sugar A
 // CHECK-NEXT:             |-TemplateArgument type 'int':'int'
 // CHECK-NEXT:             | `-SubstTemplateTypeParmType 0x{{[0-9A-Fa-f]+}} 'int' sugar typename depth 0 index 1
@@ -73,14 +73,14 @@ template <template <class T, T...> class S, class T, int N> struct C {
 // CHECK-NEXT:       | `-TemplateTypeParmType 0x{{[0-9A-Fa-f]+}} 'T' dependent depth 0 index 1
 // CHECK-NEXT:       |   `-TemplateTypeParm 0x{{[0-9A-Fa-f]+}} 'T'
 // CHECK-NEXT:       |-TemplateArgument expr
-// CHECK-NEXT:       | `-ImplicitCastExpr 0x{{[0-9A-Fa-f]+}} <col:42> 'type-parameter-0-1':'type-parameter-0-1' <Dependent>
+// CHECK-NEXT:       | `-ImplicitCastExpr 0x{{[0-9A-Fa-f]+}} <col:42> 'T':'T' <Dependent>
 // CHECK-NEXT:       |   `-DeclRefExpr 0x{{[0-9A-Fa-f]+}} <col:42> 'int' NonTypeTemplateParm 0x{{[0-9A-Fa-f]+}} 'N' 'int'
 // CHECK-NEXT:       `-TemplateSpecializationType 0x{{[0-9A-Fa-f]+}} '__make_integer_seq<type-parameter-0-1, N>' dependent __make_integer_seq
 // CHECK-NEXT:         |-TemplateArgument template
 // CHECK-NEXT:         |-TemplateArgument type 'type-parameter-0-1'
 // CHECK-NEXT:         | `-TemplateTypeParmType 0x{{[0-9A-Fa-f]+}} 'type-parameter-0-1' dependent depth 0 index 1
 // CHECK-NEXT:         `-TemplateArgument expr
-// CHECK-NEXT:           `-ImplicitCastExpr 0x{{[0-9A-Fa-f]+}} <col:42> 'type-parameter-0-1':'type-parameter-0-1' <Dependent>
+// CHECK-NEXT:           `-ImplicitCastExpr 0x{{[0-9A-Fa-f]+}} <col:42> 'T':'T' <Dependent>
 // CHECK-NEXT:             `-DeclRefExpr 0x{{[0-9A-Fa-f]+}} <col:42> 'int' NonTypeTemplateParm 0x{{[0-9A-Fa-f]+}} 'N' 'int'
 
   using test4 = __make_integer_seq<A, T, 1>;
@@ -92,14 +92,14 @@ template <template <class T, T...> class S, class T, int N> struct C {
 // CHECK-NEXT:       | `-TemplateTypeParmType 0x{{[0-9A-Fa-f]+}} 'T' dependent depth 0 index 1
 // CHECK-NEXT:       |   `-TemplateTypeParm 0x{{[0-9A-Fa-f]+}} 'T'
 // CHECK-NEXT:       |-TemplateArgument expr
-// CHECK-NEXT:       | `-ImplicitCastExpr 0x{{[0-9A-Fa-f]+}} <col:42> 'type-parameter-0-1':'type-parameter-0-1' <Dependent>
+// CHECK-NEXT:       | `-ImplicitCastExpr 0x{{[0-9A-Fa-f]+}} <col:42> 'T':'T' <Dependent>
 // CHECK-NEXT:       |   `-IntegerLiteral 0x{{[0-9A-Fa-f]+}} <col:42> 'int' 1
 // CHECK-NEXT:       `-TemplateSpecializationType 0x{{[0-9A-Fa-f]+}} '__make_integer_seq<A, type-parameter-0-1, 1>' dependent __make_integer_seq
 // CHECK-NEXT:         |-TemplateArgument template A
 // CHECK-NEXT:         |-TemplateArgument type 'type-parameter-0-1'
 // CHECK-NEXT:         | `-TemplateTypeParmType 0x{{[0-9A-Fa-f]+}} 'type-parameter-0-1' dependent depth 0 index 1
 // CHECK-NEXT:         `-TemplateArgument expr
-// CHECK-NEXT:           `-ImplicitCastExpr 0x{{[0-9A-Fa-f]+}} <col:42> 'type-parameter-0-1':'type-parameter-0-1' <Dependent>
+// CHECK-NEXT:           `-ImplicitCastExpr 0x{{[0-9A-Fa-f]+}} <col:42> 'T':'T' <Dependent>
 // CHECK-NEXT:             `-IntegerLiteral 0x{{[0-9A-Fa-f]+}} <col:42> 'int' 1
 
   using test5 = __make_integer_seq<A, int, N>;

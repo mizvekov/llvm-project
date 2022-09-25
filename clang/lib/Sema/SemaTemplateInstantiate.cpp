@@ -1828,7 +1828,7 @@ TemplateInstantiator::TransformSubstNonTypeTemplateParmExpr(
     return true;
   return transformNonTypeTemplateParmRef(E->getAssociatedDecl(),
                                          E->getParameter(), E->getExprLoc(),
-                                         CanonicalConverted, E->getPackIndex());
+                                         SugaredConverted, E->getPackIndex());
 }
 
 ExprResult TemplateInstantiator::RebuildVarDeclRefExpr(VarDecl *PD,
