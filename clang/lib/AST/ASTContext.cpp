@@ -3041,6 +3041,23 @@ ASTContext::getASTObjCImplementationLayout(
   return getObjCLayout(D->getClassInterface(), D);
 }
 
+static bool
+getCanonicalTemplateArguments(const ASTContext &C,
+                              ArrayRef<TemplateArgument> OrigArgs,
+                              SmallVectorImpl<TemplateArgument> &CanonArgs) {
+  bool AnyNonCanonArgs = false;
+  unsigned NumArgs = OrigArgs.size();
+  CanonArgs.resize(NumArgs);
+  for (unsigned I = 0; I != NumArgs; ++I) {
+    const TemplateArgument &OrigArg = OrigArgs[I];
+    TemplateArgument &CanonArg = CanonArgs[I];
+    CanonArg = C.getCanonicalTemplateArgument(OrigArg);
+    if (!CanonArg.structurallyEquals(OrigArg))
+      AnyNonCanonArgs = true;
+  }
+  return AnyNonCanonArgs;
+}
+
 //===----------------------------------------------------------------------===//
 //                   Type creation/memoization methods
 //===----------------------------------------------------------------------===//
@@ -4848,31 +4865,42 @@ ASTContext::getSubstTemplateTypeParmType(QualType Replacement,
 }
 
 /// Retrieve a
-QualType ASTContext::getSubstTemplateTypeParmPackType(
-    Decl *AssociatedDecl, unsigned Index, const TemplateArgument &ArgPack) {
+QualType
+ASTContext::getSubstTemplateTypeParmPackType(Decl *AssociatedDecl,
+                                             unsigned Index, bool Final,
+                                             const TemplateArgument &ArgPack) {
 #ifndef NDEBUG
-  for (const auto &P : ArgPack.pack_elements()) {
+  for (const auto &P : ArgPack.pack_elements())
     assert(P.getKind() == TemplateArgument::Type && "Pack contains a non-type");
-    assert(P.getAsType().isCanonical() && "Pack contains non-canonical type");
-  }
 #endif
 
   llvm::FoldingSetNodeID ID;
-  SubstTemplateTypeParmPackType::Profile(ID, AssociatedDecl, Index, ArgPack);
+  SubstTemplateTypeParmPackType::Profile(ID, AssociatedDecl, Index, Final,
+                                         ArgPack);
   void *InsertPos = nullptr;
   if (SubstTemplateTypeParmPackType *SubstParm =
           SubstTemplateTypeParmPackTypes.FindNodeOrInsertPos(ID, InsertPos))
     return QualType(SubstParm, 0);
 
   QualType Canon;
-  if (!AssociatedDecl->isCanonicalDecl()) {
-    Canon = getSubstTemplateTypeParmPackType(AssociatedDecl->getCanonicalDecl(),
-                                             Index, ArgPack);
-    SubstTemplateTypeParmPackTypes.FindNodeOrInsertPos(ID, InsertPos);
+  {
+    SmallVector<TemplateArgument, 8> Args(ArgPack.pack_size());
+    TemplateArgument CanonArgPack = ArgPack;
+    bool AnyNonCanonArgs =
+        getCanonicalTemplateArguments(*this, ArgPack.pack_elements(), Args);
+    if (AnyNonCanonArgs)
+      CanonArgPack = TemplateArgument::CreatePackCopy(*this, Args);
+    if (!AssociatedDecl->isCanonicalDecl() || AnyNonCanonArgs) {
+      Canon = getSubstTemplateTypeParmPackType(
+          AssociatedDecl->getCanonicalDecl(), Index, Final, CanonArgPack);
+      [[maybe_unused]] const auto *Nothing =
+          SubstTemplateTypeParmPackTypes.FindNodeOrInsertPos(ID, InsertPos);
+      assert(!Nothing);
+    }
   }
 
-  auto *SubstParm = new (*this, TypeAlignment)
-      SubstTemplateTypeParmPackType(Canon, AssociatedDecl, Index, ArgPack);
+  auto *SubstParm = new (*this, TypeAlignment) SubstTemplateTypeParmPackType(
+      Canon, AssociatedDecl, Index, Final, ArgPack);
   Types.push_back(SubstParm);
   SubstTemplateTypeParmPackTypes.InsertNode(SubstParm, InsertPos);
   return QualType(SubstParm, 0);
@@ -4995,23 +5023,6 @@ ASTContext::getTemplateSpecializationType(TemplateName Template,
 
   Types.push_back(Spec);
   return QualType(Spec, 0);
-}
-
-static bool
-getCanonicalTemplateArguments(const ASTContext &C,
-                              ArrayRef<TemplateArgument> OrigArgs,
-                              SmallVectorImpl<TemplateArgument> &CanonArgs) {
-  bool AnyNonCanonArgs = false;
-  unsigned NumArgs = OrigArgs.size();
-  CanonArgs.resize(NumArgs);
-  for (unsigned I = 0; I != NumArgs; ++I) {
-    const TemplateArgument &OrigArg = OrigArgs[I];
-    TemplateArgument &CanonArg = CanonArgs[I];
-    CanonArg = C.getCanonicalTemplateArgument(OrigArg);
-    if (!CanonArg.structurallyEquals(OrigArg))
-      AnyNonCanonArgs = true;
-  }
-  return AnyNonCanonArgs;
 }
 
 QualType ASTContext::getCanonicalTemplateSpecializationType(
@@ -6284,7 +6295,7 @@ ASTContext::getCanonicalTemplateName(const TemplateName &Name) const {
         getCanonicalTemplateArgument(subst->getArgumentPack());
     return getSubstTemplateTemplateParmPack(
         canonArgPack, subst->getAssociatedDecl()->getCanonicalDecl(),
-        subst->getIndex());
+        subst->getFinal(), subst->getIndex());
   }
   }
 
@@ -9310,11 +9321,11 @@ ASTContext::getSubstTemplateTemplateParm(TemplateName Replacement,
 TemplateName
 ASTContext::getSubstTemplateTemplateParmPack(const TemplateArgument &ArgPack,
                                              Decl *AssociatedDecl,
-                                             unsigned Index) const {
+                                             unsigned Index, bool Final) const {
   auto &Self = const_cast<ASTContext &>(*this);
   llvm::FoldingSetNodeID ID;
   SubstTemplateTemplateParmPackStorage::Profile(ID, Self, ArgPack,
-                                                AssociatedDecl, Index);
+                                                AssociatedDecl, Index, Final);
 
   void *InsertPos = nullptr;
   SubstTemplateTemplateParmPackStorage *Subst
@@ -9322,7 +9333,7 @@ ASTContext::getSubstTemplateTemplateParmPack(const TemplateArgument &ArgPack,
 
   if (!Subst) {
     Subst = new (*this) SubstTemplateTemplateParmPackStorage(
-        ArgPack.pack_elements(), AssociatedDecl, Index);
+        ArgPack.pack_elements(), AssociatedDecl, Index, Final);
     SubstTemplateTemplateParmPacks.InsertNode(Subst, InsertPos);
   }
 
