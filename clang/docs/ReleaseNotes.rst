@@ -270,6 +270,9 @@ Bug Fixes
   `Issue 58679 <https://github.com/llvm/llvm-project/issues/58679>`_
 - Fix a crash when a ``btf_type_tag`` attribute is applied to the pointee of
   a function pointer.
+- Fix missing diagnostics for uses of declarations when performing typename access,
+  such as when performing member access on a '[[deprecated]]' type alias.
+  `Issue 58547 <https://github.com/llvm/llvm-project/issues/58547>`
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
