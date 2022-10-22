@@ -23,7 +23,11 @@
 int main(int, char**)
 {
     std::allocator<int> a;
-    TEST_IGNORE_NODISCARD a.allocate(3, nullptr); // expected-warning {{'allocate' is deprecated}}
-
+    TEST_IGNORE_NODISCARD a.allocate(3, nullptr);
+    // expected-warning@-1 {{'allocate' is deprecated}}
+#if TEST_CLANG_VER >= 1600
+    // expected-warning@*:* {{'pointer' is deprecated}}
+    // expected-warning@*:* {{'const_pointer' is deprecated}}
+#endif
     return 0;
 }
