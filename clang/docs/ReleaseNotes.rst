@@ -269,6 +269,9 @@ Bug Fixes
 - Fix handling of unexpanded packs in template argument expressions.
   `Issue 58679 <https://github.com/llvm/llvm-project/issues/58679>`_
 - Fix importing of va_list types and declarations.
+- Fix missing diagnostics for uses of declarations when performing typename access,
+  such as when performing member access on a '[[deprecated]]' type alias.
+  `Issue 58547 <https://github.com/llvm/llvm-project/issues/58547>`
 
 Improvements to Clang's diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
