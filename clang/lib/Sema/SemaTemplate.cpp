@@ -4864,9 +4864,9 @@ Sema::CheckConceptTemplateId(const CXXScopeSpec &SS,
   ConstraintSatisfaction Satisfaction;
   bool AreArgsDependent =
       TemplateSpecializationType::anyDependentTemplateArguments(
-          *TemplateArgs, CanonicalConverted);
-  MultiLevelTemplateArgumentList MLTAL(NamedConcept, CanonicalConverted,
-                                       /*Final=*/false);
+          *TemplateArgs, SugaredConverted);
+  MultiLevelTemplateArgumentList MLTAL(NamedConcept, SugaredConverted,
+                                       /*Final=*/true);
   LocalInstantiationScope Scope(*this);
   if (!AreArgsDependent &&
       CheckConstraintSatisfaction(
@@ -4881,7 +4881,7 @@ Sema::CheckConceptTemplateId(const CXXScopeSpec &SS,
       SS.isSet() ? SS.getWithLocInContext(Context) : NestedNameSpecifierLoc{},
       TemplateKWLoc, ConceptNameInfo, FoundDecl, NamedConcept,
       ASTTemplateArgumentListInfo::Create(Context, *TemplateArgs),
-      CanonicalConverted, AreArgsDependent ? nullptr : &Satisfaction);
+      SugaredConverted, AreArgsDependent ? nullptr : &Satisfaction);
 }
 
 ExprResult Sema::BuildTemplateIdExpr(const CXXScopeSpec &SS,
@@ -6093,7 +6093,7 @@ bool Sema::CheckTemplateArgumentList(
 
   if (!PartialTemplateArgs) {
     TemplateArgumentList StackTemplateArgs(TemplateArgumentList::OnStack,
-                                           CanonicalConverted);
+                                           SugaredConverted);
     // Setup the context/ThisScope for the case where we are needing to
     // re-instantiate constraints outside of normal instantiation.
     DeclContext *NewContext = Template->getDeclContext();
@@ -6113,7 +6113,7 @@ bool Sema::CheckTemplateArgumentList(
     CXXThisScopeRAII(*this, RD, ThisQuals, RD != nullptr);
 
     MultiLevelTemplateArgumentList MLTAL = getTemplateInstantiationArgs(
-        Template, /*Final=*/false, &StackTemplateArgs,
+        Template, /*Final=*/true, &StackTemplateArgs,
         /*RelativeToPrimary=*/true,
         /*Pattern=*/nullptr,
         /*ForConceptInstantiation=*/true);
