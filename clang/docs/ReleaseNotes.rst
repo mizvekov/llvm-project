@@ -146,6 +146,13 @@ Non-comprehensive list of changes in this release
 
 New Compiler Flags
 ------------------
+* ``-fverify-intermediate-code`` and it's complement ``-fno-verify-intermediate-code``.
+  Enables or disables verification of the generated LLVM IR.
+  It's strongly encouraged to enable this verification, as it can catch hard to
+  find code generation bugs.
+  Since enabling the verifier adds a non-trivial cost of a few percent impact on
+  build times, it's disabled by default, unless your LLVM distribution itself is
+  compiled with runtime checks enabled.
 
 Deprecated Compiler Flags
 -------------------------
