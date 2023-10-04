@@ -5152,7 +5152,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Disable the verification pass in asserts builds unless otherwise specified.
   if (Args.hasFlag(options::OPT_fno_verify_intermediate_code,
-                   options::OPT_fverify_intermediate_code, !IsAssertBuild)) {
+                   options::OPT_fverify_intermediate_code, false)) {
     CmdArgs.push_back("-disable-llvm-verifier");
   }
 
