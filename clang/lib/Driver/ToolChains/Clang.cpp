@@ -5157,7 +5157,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // Enable the machine code verification pass in asserts builds unless
   // otherwise specified.
   if (Args.hasFlag(options::OPT_fverify_machine_code,
-                   options::OPT_fno_verify_machine_code, IsAssertBuild)) {
+                   options::OPT_fno_verify_machine_code, true)) {
     CmdArgs.push_back("-mllvm");
     CmdArgs.push_back("-verify-machineinstrs");
   }
