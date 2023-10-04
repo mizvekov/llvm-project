@@ -520,6 +520,11 @@
 // CHECK-COVERAGE-COMPILATION-DIR: "-fcoverage-compilation-dir=."
 // CHECK-COVERAGE-COMPILATION-DIR-NOT: "-ffile-compilation-dir=."
 
+// RUN: %clang -### -S -fverify-machine-code %s 2>&1 | FileCheck -check-prefix=CHECK-VERIFY-MACHINE-CODE %s
+// RUN: %clang -### -S -fno-verify-machine-code %s 2>&1 | FileCheck -check-prefix=CHECK-NO-VERIFY-MACHINE-CODE %s
+// CHECK-VERIFY-MACHINE-CODE: "-mllvm" "-verify-machineinstrs"
+// CHECK-NO-VERIFY-MACHINE-CODE-NOT: "-mllvm" "-verify-machineinstrs"
+
 // RUN: %clang -### -S -fdiscard-value-names %s 2>&1 | FileCheck -check-prefix=CHECK-DISCARD-NAMES %s
 // RUN: %clang -### -S -fno-discard-value-names %s 2>&1 | FileCheck -check-prefix=CHECK-NO-DISCARD-NAMES %s
 // CHECK-DISCARD-NAMES: "-discard-value-names"
