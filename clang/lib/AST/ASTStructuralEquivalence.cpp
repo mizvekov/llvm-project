@@ -636,6 +636,9 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
      // It is sufficient to check value of getAsTemplateDecl.
      break;
 
+   case TemplateName::DeducedTemplate:
+     // TODO: Implement this
+     llvm_unreachable("unimplemented");
   }
 
   return true;
