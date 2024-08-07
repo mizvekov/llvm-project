@@ -93,7 +93,7 @@ void SubstTemplateTemplateParmPackStorage::Profile(
     llvm::FoldingSetNodeID &ID, ASTContext &Context,
     const TemplateArgument &ArgPack, Decl *AssociatedDecl, unsigned Index,
     bool Final) {
-  ArgPack.Profile(ID, Context);
+  ArgPack.Profile(ID, Context, /*Canonical=*/false);
   ID.AddPointer(AssociatedDecl);
   ID.AddInteger(Index);
   ID.AddBoolean(Final);

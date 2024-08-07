@@ -1718,7 +1718,8 @@ public:
       const IdentifierInfo *Name, ArrayRef<TemplateArgumentLoc> Args) const;
   QualType getDependentTemplateSpecializationType(
       ElaboratedTypeKeyword Keyword, NestedNameSpecifier *NNS,
-      const IdentifierInfo *Name, ArrayRef<TemplateArgument> Args) const;
+      const IdentifierInfo *Name, ArrayRef<TemplateArgument> Args,
+      bool Canonical = false) const;
 
   TemplateArgument getInjectedTemplateArg(NamedDecl *ParamDecl);
 

@@ -415,7 +415,7 @@ DiagRecursiveConstraintEval(Sema &S, llvm::FoldingSetNodeID &ID,
   for (const auto &List : MLTAL)
     for (const auto &TemplateArg : List.Args)
       S.Context.getCanonicalTemplateArgument(TemplateArg)
-          .Profile(ID, S.Context);
+          .Profile(ID, S.Context, /*Canonical=*/true);
 
   // Note that we have to do this with our own collection, because there are
   // times where a constraint-expression check can cause us to need to evaluate

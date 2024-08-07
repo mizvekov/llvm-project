@@ -5909,8 +5909,10 @@ struct TemplateArgumentListAreEqual {
       // because canonicalization can't do the right thing for dependent
       // expressions.
       llvm::FoldingSetNodeID IDA, IDB;
-      Args1[I].Profile(IDA, Ctx);
-      Args2[I].Profile(IDB, Ctx);
+      Ctx.getCanonicalTemplateArgument(Args1[I]).Profile(IDA, Ctx,
+                                                         /*Canonical=*/true);
+      Ctx.getCanonicalTemplateArgument(Args2[I]).Profile(IDB, Ctx,
+                                                         /*Canonical=*/true);
       if (IDA != IDB)
         return false;
     }
@@ -5928,10 +5930,10 @@ struct TemplateArgumentListAreEqual {
       // because canonicalization can't do the right thing for dependent
       // expressions.
       llvm::FoldingSetNodeID IDA, IDB;
-      Args1[I].Profile(IDA, Ctx);
-      // Unlike the specialization arguments, the injected arguments are not
-      // always canonical.
-      Ctx.getCanonicalTemplateArgument(Args2[I]).Profile(IDB, Ctx);
+      Ctx.getCanonicalTemplateArgument(Args1[I]).Profile(IDA, Ctx,
+                                                         /*Canonical=*/true);
+      Ctx.getCanonicalTemplateArgument(Args2[I]).Profile(IDB, Ctx,
+                                                         /*Canonical=*/true);
       if (IDA != IDB)
         return false;
     }

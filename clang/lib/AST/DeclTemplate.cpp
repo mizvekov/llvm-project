@@ -565,7 +565,7 @@ void ClassTemplatePartialSpecializationDecl::Profile(
     TemplateParameterList *TPL, const ASTContext &Context) {
   ID.AddInteger(TemplateArgs.size());
   for (const TemplateArgument &TemplateArg : TemplateArgs)
-    TemplateArg.Profile(ID, Context);
+    TemplateArg.Profile(ID, Context, /*Canonical=*/true);
   TPL->Profile(ID, Context);
 }
 
@@ -1320,7 +1320,7 @@ void VarTemplatePartialSpecializationDecl::Profile(
     TemplateParameterList *TPL, const ASTContext &Context) {
   ID.AddInteger(TemplateArgs.size());
   for (const TemplateArgument &TemplateArg : TemplateArgs)
-    TemplateArg.Profile(ID, Context);
+    TemplateArg.Profile(ID, Context, /*Canonical=*/true);
   TPL->Profile(ID, Context);
 }
 

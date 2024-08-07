@@ -6415,7 +6415,7 @@ public:
   static void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
                       QualType Deduced, AutoTypeKeyword Keyword,
                       bool IsDependent, ConceptDecl *CD,
-                      ArrayRef<TemplateArgument> Arguments);
+                      ArrayRef<TemplateArgument> Arguments, bool Canonical);
 
   static bool classof(const Type *T) {
     return T->getTypeClass() == Auto;
@@ -6568,7 +6568,8 @@ public:
   static void Profile(llvm::FoldingSetNodeID &ID, TemplateName T,
                       ArrayRef<TemplateArgument> SpecifiedArgs,
                       ArrayRef<TemplateArgument> ConvertedArgs,
-                      QualType Underlying, const ASTContext &Context);
+                      QualType Underlying, const ASTContext &Context,
+                      bool Canonical);
 
   static bool classof(const Type *T) {
     return T->getTypeClass() == TemplateSpecialization;
@@ -6927,15 +6928,15 @@ public:
   QualType desugar() const { return QualType(this, 0); }
 
   void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context) {
-    Profile(ID, Context, getKeyword(), NNS, Name, template_arguments());
+    Profile(ID, Context, getKeyword(), NNS, Name, template_arguments(),
+            isCanonicalUnqualified());
   }
 
-  static void Profile(llvm::FoldingSetNodeID &ID,
-                      const ASTContext &Context,
+  static void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
                       ElaboratedTypeKeyword Keyword,
                       NestedNameSpecifier *Qualifier,
                       const IdentifierInfo *Name,
-                      ArrayRef<TemplateArgument> Args);
+                      ArrayRef<TemplateArgument> Args, bool Canonical);
 
   static bool classof(const Type *T) {
     return T->getTypeClass() == DependentTemplateSpecialization;

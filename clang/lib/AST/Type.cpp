@@ -3249,18 +3249,16 @@ DependentTemplateSpecializationType::DependentTemplateSpecializationType(
   }
 }
 
-void
-DependentTemplateSpecializationType::Profile(llvm::FoldingSetNodeID &ID,
-                                             const ASTContext &Context,
-                                             ElaboratedTypeKeyword Keyword,
-                                             NestedNameSpecifier *Qualifier,
-                                             const IdentifierInfo *Name,
-                                             ArrayRef<TemplateArgument> Args) {
+void DependentTemplateSpecializationType::Profile(
+    llvm::FoldingSetNodeID &ID, const ASTContext &Context,
+    ElaboratedTypeKeyword Keyword, NestedNameSpecifier *Qualifier,
+    const IdentifierInfo *Name, ArrayRef<TemplateArgument> Args,
+    bool Canonical) {
   ID.AddInteger(llvm::to_underlying(Keyword));
   ID.AddPointer(Qualifier);
   ID.AddPointer(Name);
   for (const TemplateArgument &Arg : Args)
-    Arg.Profile(ID, Context);
+    Arg.Profile(ID, Context, Canonical);
 }
 
 bool Type::isElaboratedTypeSpecifier() const {
@@ -4356,23 +4354,24 @@ TemplateSpecializationType::getConvertedArguments() const {
 void TemplateSpecializationType::Profile(llvm::FoldingSetNodeID &ID,
                                          const ASTContext &Ctx) {
   Profile(ID, Template, getSpecifiedArguments(), getConvertedArguments(),
-          isSugared() ? desugar() : QualType(), Ctx);
+          isSugared() ? desugar() : QualType(), Ctx, isCanonicalUnqualified());
 }
 
 void TemplateSpecializationType::Profile(
     llvm::FoldingSetNodeID &ID, TemplateName T,
     ArrayRef<TemplateArgument> SpecifiedArgs,
     ArrayRef<TemplateArgument> ConvertedArgs, QualType Underlying,
-    const ASTContext &Context) {
+    const ASTContext &Context, bool Canonical) {
   T.Profile(ID);
 
+  assert(!Canonical || SpecifiedArgs.size() == 0);
   ID.AddInteger(SpecifiedArgs.size());
   for (const TemplateArgument &Arg : SpecifiedArgs)
-    Arg.Profile(ID, Context);
+    Arg.Profile(ID, Context, /*Canonical=*/false);
 
   ID.AddInteger(ConvertedArgs.size());
   for (const TemplateArgument &Arg : ConvertedArgs)
-    Arg.Profile(ID, Context);
+    Arg.Profile(ID, Context, Canonical);
 
   Underlying.Profile(ID);
 }
@@ -5112,20 +5111,21 @@ AutoType::AutoType(QualType DeducedAsType, AutoTypeKeyword Keyword,
 }
 
 void AutoType::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context,
-                      QualType Deduced, AutoTypeKeyword Keyword,
-                      bool IsDependent, ConceptDecl *CD,
-                      ArrayRef<TemplateArgument> Arguments) {
+                       QualType Deduced, AutoTypeKeyword Keyword,
+                       bool IsDependent, ConceptDecl *CD,
+                       ArrayRef<TemplateArgument> Arguments, bool Canonical) {
   ID.AddPointer(Deduced.getAsOpaquePtr());
   ID.AddInteger((unsigned)Keyword);
   ID.AddBoolean(IsDependent);
   ID.AddPointer(CD);
   for (const TemplateArgument &Arg : Arguments)
-    Arg.Profile(ID, Context);
+    Arg.Profile(ID, Context, Canonical);
 }
 
 void AutoType::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &Context) {
   Profile(ID, Context, getDeducedType(), getKeyword(), isDependentType(),
-          getTypeConstraintConcept(), getTypeConstraintArguments());
+          getTypeConstraintConcept(), getTypeConstraintArguments(),
+          isCanonicalUnqualified());
 }
 
 FunctionEffect::Kind FunctionEffect::oppositeKind() const {
