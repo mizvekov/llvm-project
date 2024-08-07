@@ -41,7 +41,7 @@ int main(int, char**)
     {
         // expected-error-re@optional:* {{static assertion failed{{.*}}instantiation of optional with a non-object type is undefined behavior}}
         // expected-error-re@optional:* {{static assertion failed{{.*}}instantiation of optional with a non-destructible type is ill-formed}}
-        // expected-error@optional:* 1+ {{cannot form a reference to 'void'}}
+        // expected-error@optional:* 1+ {{cannot form a reference to}}
         optional<const void> opt4;
     }
     // FIXME these are garbage diagnostics that Clang should not produce

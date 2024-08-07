@@ -658,12 +658,15 @@ DeduceTemplateArguments(Sema &S, TemplateParameterList *TemplateParams,
 /// but it may still fail, later, for other reasons.
 
 static const TemplateSpecializationType *getLastTemplateSpecType(QualType QT) {
+  const TemplateSpecializationType *LastTST = nullptr;
   for (const Type *T = QT.getTypePtr(); /**/; /**/) {
     const TemplateSpecializationType *TST =
         T->getAs<TemplateSpecializationType>();
-    assert(TST && "Expected a TemplateSpecializationType");
+    if (!TST)
+      return LastTST;
     if (!TST->isSugared())
       return TST;
+    LastTST = TST;
     T = TST->desugar().getTypePtr();
   }
 }
@@ -688,68 +691,55 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
   ArrayRef<TemplateArgument> PResolved = TP->getConvertedArguments();
 
   QualType UA = A;
-  std::optional<NestedNameSpecifier *> NNS;
   // Treat an injected-class-name as its underlying template-id.
-  if (const auto *Elaborated = A->getAs<ElaboratedType>()) {
-    NNS = Elaborated->getQualifier();
-  } else if (const auto *Injected = A->getAs<InjectedClassNameType>()) {
+  if (const auto *Injected = A->getAs<InjectedClassNameType>())
     UA = Injected->getInjectedSpecializationType();
-    NNS = nullptr;
+
+  const TemplateSpecializationType *TA = ::getLastTemplateSpecType(UA);
+  TemplateName TNA;
+  ArrayRef<TemplateArgument> AResolved;
+  if (TA) {
+    TNA = TA->getTemplateName();
+    AResolved = TA->getConvertedArguments();
   }
-
-  // Check whether the template argument is a dependent template-id.
-  if (isa<TemplateSpecializationType>(UA.getCanonicalType())) {
-    const TemplateSpecializationType *SA = ::getLastTemplateSpecType(UA);
-    TemplateName TNA = SA->getTemplateName();
-
+  if (auto *SA = dyn_cast_or_null<ClassTemplateSpecializationDecl>(
+          A->getAsCXXRecordDecl())) {
+    if (TA) {
+      // This could be a type alias to a class template specialization type
+      // which was desugared. If so, ignore it.
+      if (TNA.getAsTemplateDecl()->isTypeAlias())
+        TA = nullptr;
+      else
+        assert(isSameDeclaration(TNA.getAsTemplateDecl(),
+                                 SA->getSpecializedTemplate()));
+    }
+    if (!TA) {
+      // If the argument type is a class template specialization, we
+      // perform template argument deduction using its template
+      // arguments.
+      TNA = TemplateName(SA->getSpecializedTemplate());
+      AResolved = SA->getTemplateArgs().asArray();
+    }
+  } else if (isa<TemplateSpecializationType>(UA.getCanonicalType())) {
     // If the argument is an alias template, there is nothing to deduce.
     if (const auto *TD = TNA.getAsTemplateDecl(); TD && TD->isTypeAlias())
       return TemplateDeductionResult::Success;
-
-    ArrayRef<TemplateArgument> AResolved = SA->getConvertedArguments();
-
-    // Perform template argument deduction for the template name.
-    if (auto Result = DeduceTemplateArguments(S, TemplateParams, TNP, TNA, Info,
-                                              AResolved, Deduced);
-        Result != TemplateDeductionResult::Success)
-      return Result;
-
-    // Perform template argument deduction on each template
-    // argument. Ignore any missing/extra arguments, since they could be
-    // filled in by default arguments.
-    return DeduceTemplateArguments(S, TemplateParams, PResolved, AResolved,
-                                   Info, Deduced,
-                                   /*NumberOfArgumentsMustMatch=*/false);
-  }
-
-  // If the argument type is a class template specialization, we
-  // perform template argument deduction using its template
-  // arguments.
-  const auto *RA = UA->getAs<RecordType>();
-  const auto *SA =
-      RA ? dyn_cast<ClassTemplateSpecializationDecl>(RA->getDecl()) : nullptr;
-  if (!SA) {
+  } else {
     Info.FirstArg = TemplateArgument(P);
     Info.SecondArg = TemplateArgument(A);
     return TemplateDeductionResult::NonDeducedMismatch;
   }
 
-  TemplateName TNA = TemplateName(SA->getSpecializedTemplate());
-  if (NNS)
-    TNA = S.Context.getQualifiedTemplateName(
-        *NNS, false, TemplateName(SA->getSpecializedTemplate()));
-
   // Perform template argument deduction for the template name.
-  // FIXME: Use the template args from the TST.
   if (auto Result =
           DeduceTemplateArguments(S, TemplateParams, TNP, TNA, Info,
-                                  SA->getTemplateArgs().asArray(), Deduced);
+                                  /*DefaultArguments=*/AResolved, Deduced);
       Result != TemplateDeductionResult::Success)
     return Result;
 
   // Perform template argument deduction for the template arguments.
-  return DeduceTemplateArguments(S, TemplateParams, PResolved,
-                                 SA->getTemplateArgs().asArray(), Info, Deduced,
+  return DeduceTemplateArguments(S, TemplateParams, PResolved, AResolved, Info,
+                                 Deduced,
                                  /*NumberOfArgumentsMustMatch=*/true);
 }
 
