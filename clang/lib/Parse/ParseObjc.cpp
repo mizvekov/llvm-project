@@ -19,6 +19,7 @@
 #include "clang/Parse/Parser.h"
 #include "clang/Parse/RAIIObjectsForParser.h"
 #include "clang/Sema/DeclSpec.h"
+#include "clang/Sema/EnterExpressionEvaluationContext.h"
 #include "clang/Sema/Scope.h"
 #include "clang/Sema/SemaCodeCompletion.h"
 #include "clang/Sema/SemaObjC.h"
@@ -648,6 +649,10 @@ void Parser::ParseObjCInterfaceDeclList(tok::ObjCKeywordKind contextKey,
   SourceRange AtEnd;
 
   while (true) {
+    EnterExpressionEvaluationContext Eval(
+        getActions(), getActions().currentEvaluationContext().Context,
+        Sema::LazyContextDecl);
+
     // If this is a method prototype, parse it.
     if (Tok.isOneOf(tok::minus, tok::plus)) {
       if (Decl *methodPrototype =
@@ -1546,8 +1551,13 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
     Declarator ParmDecl(DS, ParsedAttributesView::none(),
                         DeclaratorContext::Prototype);
     ParseDeclarator(ParmDecl);
+
+    bool StartImplicitTemplate = false;
+    Decl *Param = Actions.ActOnParamDeclarator(
+        getCurScope(), ParmDecl, TemplateParameterDepth, StartImplicitTemplate);
+    assert(!StartImplicitTemplate);
+
     const IdentifierInfo *ParmII = ParmDecl.getIdentifier();
-    Decl *Param = Actions.ActOnParamDeclarator(getCurScope(), ParmDecl);
     CParamInfo.push_back(DeclaratorChunk::ParamInfo(ParmII,
                                                     ParmDecl.getIdentifierLoc(),
                                                     Param,

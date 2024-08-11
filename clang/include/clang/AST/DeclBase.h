@@ -929,7 +929,8 @@ public:
 
   /// Determine the number of levels of template parameter surrounding this
   /// declaration.
-  unsigned getTemplateDepth() const;
+  unsigned
+  getTemplateDepth(ArrayRef<TemplateArgument> SpecArgs = std::nullopt) const;
 
   /// isDefinedOutsideFunctionOrMethod - This predicate returns true if this
   /// scoped decl is defined outside the current function or method.  This is
@@ -1994,6 +1995,16 @@ class DeclContext {
     uint64_t CanAvoidCopyToHeap : 1;
   };
 
+  class RequiresExprBodyDeclBitfields {
+    friend class RequiresExprBodyDecl;
+    /// For the bits in DeclContextBitfields.
+    LLVM_PREFERRED_TYPE(DeclContextBitfields)
+    uint64_t : NumDeclContextBits;
+
+    LLVM_PREFERRED_TYPE(unsigned)
+    uint64_t NumContextArgsOrNoContext : 20;
+  };
+
   /// Number of inherited and non-inherited bits in BlockDeclBitfields.
   enum { NumBlockDeclBits = NumDeclContextBits + 5 };
 
@@ -2027,6 +2038,7 @@ protected:
     ObjCContainerDeclBitfields ObjCContainerDeclBits;
     LinkageSpecDeclBitfields LinkageSpecDeclBits;
     BlockDeclBitfields BlockDeclBits;
+    RequiresExprBodyDeclBitfields RequiresExprBodyDeclBits;
 
     static_assert(sizeof(DeclContextBitfields) <= 8,
                   "DeclContextBitfields is larger than 8 bytes!");
@@ -2052,6 +2064,8 @@ protected:
                   "LinkageSpecDeclBitfields is larger than 8 bytes!");
     static_assert(sizeof(BlockDeclBitfields) <= 8,
                   "BlockDeclBitfields is larger than 8 bytes!");
+    static_assert(sizeof(RequiresExprBodyDeclBitfields) <= 8,
+                  "RequiresExprBodyDeclBitfields is larger than 8 bytes!");
   };
 
   /// FirstDecl - The first declaration stored within this declaration

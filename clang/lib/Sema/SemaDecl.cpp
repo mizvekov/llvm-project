@@ -40,6 +40,7 @@
 #include "clang/Sema/CXXFieldCollector.h"
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/DelayedDiagnostic.h"
+#include "clang/Sema/EnterExpressionEvaluationContext.h"
 #include "clang/Sema/Initialization.h"
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/ParsedTemplate.h"
@@ -2313,9 +2314,10 @@ FunctionDecl *Sema::CreateBuiltin(IdentifierInfo *II, QualType Type,
   if (const FunctionProtoType *FT = dyn_cast<FunctionProtoType>(Type)) {
     SmallVector<ParmVarDecl *, 16> Params;
     for (unsigned i = 0, e = FT->getNumParams(); i != e; ++i) {
-      ParmVarDecl *parm = ParmVarDecl::Create(
-          Context, New, SourceLocation(), SourceLocation(), nullptr,
-          FT->getParamType(i), /*TInfo=*/nullptr, SC_None, nullptr);
+      ParmVarDecl *parm =
+          ParmVarDecl::Create(Context, New, SourceLocation(), SourceLocation(),
+                              nullptr, FT->getParamType(i), /*TInfo=*/nullptr,
+                              SC_None, nullptr, /*TemplateDepth=*/0);
       parm->setScopeInfo(0, i);
       Params.push_back(parm);
     }
@@ -4159,7 +4161,8 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD, Scope *S,
         for (const auto &ParamType : OldProto->param_types()) {
           ParmVarDecl *Param = ParmVarDecl::Create(
               Context, New, SourceLocation(), SourceLocation(), nullptr,
-              ParamType, /*TInfo=*/nullptr, SC_None, nullptr);
+              ParamType, /*TInfo=*/nullptr, SC_None, nullptr,
+              New->getTemplateDepth());
           Param->setScopeInfo(0, Params.size());
           Param->setImplicit();
           Params.push_back(Param);
@@ -4810,11 +4813,10 @@ void Sema::handleTagNumbering(const TagDecl *Tag, Scope *TagScope) {
     return;
   }
 
+  ContextDeclOrLazy ContextDecl = ExprEvalContexts.back().ContextDecl;
   // If this tag isn't a direct child of a class, number it if it is local.
-  MangleNumberingContext *MCtx;
-  Decl *ManglingContextDecl;
-  std::tie(MCtx, ManglingContextDecl) =
-      getCurrentMangleNumberContext(Tag->getDeclContext());
+  MangleNumberingContext *MCtx = std::get<0>(getCurrentMangleNumberContext(
+      Tag->getDeclContext(), ContextDecl ? *ContextDecl : nullptr));
   if (MCtx) {
     Context.setManglingNumber(
         Tag, MCtx->getManglingNumber(
@@ -5702,10 +5704,9 @@ Decl *Sema::BuildAnonymousStructOrUnion(Scope *S, DeclSpec &DS,
 
   if (VarDecl *NewVD = dyn_cast<VarDecl>(Anon)) {
     if (getLangOpts().CPlusPlus && NewVD->isStaticLocal()) {
-      MangleNumberingContext *MCtx;
-      Decl *ManglingContextDecl;
-      std::tie(MCtx, ManglingContextDecl) =
-          getCurrentMangleNumberContext(NewVD->getDeclContext());
+      ContextDeclOrLazy ContextDecl = ExprEvalContexts.back().ContextDecl;
+      MangleNumberingContext *MCtx = std::get<0>(getCurrentMangleNumberContext(
+          NewVD->getDeclContext(), ContextDecl ? *ContextDecl : nullptr));
       if (MCtx) {
         Context.setManglingNumber(
             NewVD, MCtx->getManglingNumber(
@@ -8049,10 +8050,9 @@ NamedDecl *Sema::ActOnVariableDeclarator(
     RegisterLocallyScopedExternCDecl(NewVD, S);
 
   if (getLangOpts().CPlusPlus && NewVD->isStaticLocal()) {
-    MangleNumberingContext *MCtx;
-    Decl *ManglingContextDecl;
-    std::tie(MCtx, ManglingContextDecl) =
-        getCurrentMangleNumberContext(NewVD->getDeclContext());
+    ContextDeclOrLazy ContextDecl = currentEvaluationContext().ContextDecl;
+    MangleNumberingContext *MCtx = std::get<0>(getCurrentMangleNumberContext(
+        NewVD->getDeclContext(), ContextDecl ? *ContextDecl : nullptr));
     if (MCtx) {
       Context.setManglingNumber(
           NewVD, MCtx->getManglingNumber(
@@ -14921,8 +14921,10 @@ static void CheckExplicitObjectParameter(Sema &S, ParmVarDecl *P,
     LSI->ExplicitObjectParameter = P;
 }
 
-Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D,
-                                 SourceLocation ExplicitThisLoc) {
+ParmVarDecl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D,
+                                        unsigned TemplateDepth,
+                                        bool &StartImplicitTemplate,
+                                        SourceLocation ExplicitThisLoc) {
   const DeclSpec &DS = D.getDeclSpec();
 
   // Verify C99 6.7.5.3p2: The only SCS allowed is 'register'.
@@ -14962,7 +14964,10 @@ Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D,
 
   CheckFunctionOrTemplateParamDeclarator(S, D);
 
-  TypeSourceInfo *TInfo = GetTypeForDeclarator(D);
+  TypeSourceInfo *TInfo = GetTypeForDeclarator(D, &StartImplicitTemplate);
+  if (StartImplicitTemplate)
+    TemplateDepth += 1;
+
   QualType parmDeclType = TInfo->getType();
 
   // Check for redeclaration of parameters, e.g. int foo(int x, int x);
@@ -14990,12 +14995,9 @@ Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D,
     }
   }
 
-  // Temporarily put parameter variables in the translation unit, not
-  // the enclosing context.  This prevents them from accidentally
-  // looking like class members in C++.
   ParmVarDecl *New =
-      CheckParameter(Context.getTranslationUnitDecl(), D.getBeginLoc(),
-                     D.getIdentifierLoc(), II, parmDeclType, TInfo, SC);
+      CheckParameter(CurContext, D.getBeginLoc(), D.getIdentifierLoc(), II,
+                     parmDeclType, TInfo, SC, TemplateDepth);
 
   if (D.isInvalidType())
     New->setInvalidDecl();
@@ -15035,9 +15037,10 @@ ParmVarDecl *Sema::BuildParmVarDeclForTypedef(DeclContext *DC,
   /* FIXME: setting StartLoc == Loc.
      Would it be worth to modify callers so as to provide proper source
      location for the unnamed parameters, embedding the parameter's type? */
-  ParmVarDecl *Param = ParmVarDecl::Create(Context, DC, Loc, Loc, nullptr,
-                                T, Context.getTrivialTypeSourceInfo(T, Loc),
-                                           SC_None, nullptr);
+  ParmVarDecl *Param = ParmVarDecl::Create(
+      Context, DC, Loc, Loc, nullptr, T,
+      Context.getTrivialTypeSourceInfo(T, Loc), SC_None, nullptr,
+      Decl::castFromDeclContext(DC)->getTemplateDepth());
   Param->setImplicit();
   return Param;
 }
@@ -15087,7 +15090,8 @@ void Sema::DiagnoseSizeOfParametersAndReturnValue(
 ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
                                   SourceLocation NameLoc,
                                   const IdentifierInfo *Name, QualType T,
-                                  TypeSourceInfo *TSInfo, StorageClass SC) {
+                                  TypeSourceInfo *TSInfo, StorageClass SC,
+                                  unsigned TemplateDepth) {
   // In ARC, infer a lifetime qualifier for appropriate parameter types.
   if (getLangOpts().ObjCAutoRefCount &&
       T.getObjCLifetime() == Qualifiers::OCL_None &&
@@ -15117,7 +15121,7 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
 
   ParmVarDecl *New = ParmVarDecl::Create(Context, DC, StartLoc, NameLoc, Name,
                                          Context.getAdjustedParameterType(T),
-                                         TSInfo, SC, nullptr);
+                                         TSInfo, SC, nullptr, TemplateDepth);
 
   // Make a note if we created a new pack in the scope of a lambda, so that
   // we know that references to that pack must also be expanded within the
@@ -15170,7 +15174,8 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
 }
 
 void Sema::ActOnFinishKNRParamDeclarations(Scope *S, Declarator &D,
-                                           SourceLocation LocAfterDecls) {
+                                           SourceLocation LocAfterDecls,
+                                           unsigned TemplateDepth) {
   DeclaratorChunk::FunctionTypeInfo &FTI = D.getFunctionTypeInfo();
 
   // C99 6.9.1p6 "If a declarator includes an identifier list, each declaration
@@ -15210,7 +15215,9 @@ void Sema::ActOnFinishKNRParamDeclarations(Scope *S, Declarator &D,
         Declarator ParamD(DS, ParsedAttributesView::none(),
                           DeclaratorContext::KNRTypeList);
         ParamD.SetIdentifier(FTI.Params[i].Ident, FTI.Params[i].IdentLoc);
-        FTI.Params[i].Param = ActOnParamDeclarator(S, ParamD);
+        bool StartImplicitTemplate = false;
+        FTI.Params[i].Param = ActOnParamDeclarator(S, ParamD, TemplateDepth,
+                                                   StartImplicitTemplate);
       }
     }
   }
@@ -15238,6 +15245,13 @@ Sema::ActOnStartOfFunctionDef(Scope *FnBodyScope, Declarator &D,
 
   D.setFunctionDefinitionKind(FunctionDefinitionKind::Definition);
   Decl *DP = HandleDeclarator(ParentScope, D, TemplateParameterLists);
+  if (auto *D = DP) {
+    if (auto *TD = dyn_cast<FunctionTemplateDecl>(D))
+      D = TD->getTemplatedDecl();
+    else
+      assert(isa<FunctionDecl>(D));
+    UpdateCurrentContextDecl(D);
+  }
   Decl *Dcl = ActOnStartOfFunctionDef(FnBodyScope, DP, SkipBody, BodyKind);
 
   if (!Bases.empty())
@@ -15456,8 +15470,10 @@ Decl *Sema::ActOnStartOfFunctionDef(Scope *FnBodyScope, Decl *D,
     // potentially evaluated and either: its innermost enclosing non-block scope
     // is a function parameter scope of an immediate function.
     PushExpressionEvaluationContext(
-        FD->isConsteval() ? ExpressionEvaluationContext::ImmediateFunctionContext
-                          : ExprEvalContexts.back().Context);
+        FD->isConsteval()
+            ? ExpressionEvaluationContext::ImmediateFunctionContext
+            : ExprEvalContexts.back().Context,
+        FD);
 
   // Each ExpressionEvaluationContextRecord also keeps track of whether the
   // context is nested in an immediate function context, so smaller contexts
@@ -16384,6 +16400,9 @@ NamedDecl *Sema::ImplicitlyDefineFunction(SourceLocation Loc,
                                              Loc, Loc, D),
                 std::move(DS.getAttributes()), SourceLocation());
   D.SetIdentifier(&II, Loc);
+
+  EnterExpressionEvaluationContext EvalContext(
+      *this, currentEvaluationContext().Context, LazyContextDecl);
 
   // Insert this function into the enclosing block scope.
   FunctionDecl *FD = cast<FunctionDecl>(ActOnDeclarator(BlockScope, D));

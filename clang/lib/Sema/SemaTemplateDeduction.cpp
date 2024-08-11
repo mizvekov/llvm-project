@@ -3446,7 +3446,8 @@ TemplateDeductionResult Sema::SubstituteExplicitTemplateArguments(
 
   // Unevaluated SFINAE context.
   EnterExpressionEvaluationContext Unevaluated(
-      *this, Sema::ExpressionEvaluationContext::Unevaluated);
+      *this, Sema::ExpressionEvaluationContext::Unevaluated,
+      ReuseLambdaContextDecl);
   SFINAETrap Trap(*this);
 
   // C++ [temp.arg.explicit]p3:

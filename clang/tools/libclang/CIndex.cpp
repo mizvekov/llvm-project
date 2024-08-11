@@ -8442,6 +8442,7 @@ CXLinkageKind clang_getCursorLinkage(CXCursor cursor) {
   if (const NamedDecl *ND = dyn_cast_or_null<NamedDecl>(D))
     switch (ND->getLinkageInternal()) {
     case Linkage::Invalid:
+    case Linkage::Computing:
       return CXLinkage_Invalid;
     case Linkage::None:
     case Linkage::VisibleNone:

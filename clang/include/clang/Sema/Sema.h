@@ -3606,8 +3606,10 @@ public:
 
   /// ActOnParamDeclarator - Called from Parser::ParseFunctionDeclarator()
   /// to introduce parameters into function prototype scope.
-  Decl *ActOnParamDeclarator(Scope *S, Declarator &D,
-                             SourceLocation ExplicitThisLoc = {});
+  ParmVarDecl *ActOnParamDeclarator(Scope *S, Declarator &D,
+                                    unsigned TemplateDepth,
+                                    bool &StartImplicitTemplate,
+                                    SourceLocation ExplicitThisLoc = {});
 
   /// Synthesizes a variable for a parameter arising from a
   /// typedef.
@@ -3616,7 +3618,8 @@ public:
   ParmVarDecl *CheckParameter(DeclContext *DC, SourceLocation StartLoc,
                               SourceLocation NameLoc,
                               const IdentifierInfo *Name, QualType T,
-                              TypeSourceInfo *TSInfo, StorageClass SC);
+                              TypeSourceInfo *TSInfo, StorageClass SC,
+                              unsigned TemplateDepth);
 
   // Contexts where using non-trivial C union types can be disallowed. This is
   // passed to err_non_trivial_c_union_in_invalid_context.
@@ -3714,7 +3717,8 @@ public:
   };
 
   void ActOnFinishKNRParamDeclarations(Scope *S, Declarator &D,
-                                       SourceLocation LocAfterDecls);
+                                       SourceLocation LocAfterDecls,
+                                       unsigned TemplateDepth);
   void CheckForFunctionRedefinition(
       FunctionDecl *FD, const FunctionDecl *EffectiveDefinition = nullptr,
       SkipBodyInfo *SkipBody = nullptr);
@@ -6283,6 +6287,25 @@ public:
 
   using ImmediateInvocationCandidate = llvm::PointerIntPair<ConstantExpr *, 1>;
 
+  static inline struct {
+  } LazyContextDecl;
+  class ContextDeclOrLazy {
+    uintptr_t Pointer;
+
+  public:
+    ContextDeclOrLazy(Decl *Pointer) : Pointer(uintptr_t(Pointer)) {}
+    constexpr ContextDeclOrLazy(decltype(LazyContextDecl))
+        : Pointer(-uintptr_t(1)) {}
+
+    operator bool() const { return hasValue() && operator*() != nullptr; }
+
+    bool hasValue() const { return Pointer != -uintptr_t(1); }
+    Decl *operator*() const {
+      assert(hasValue());
+      return reinterpret_cast<Decl *>(Pointer);
+    }
+  };
+
   /// Data structure used to record current or nested
   /// expression evaluation contexts.
   struct ExpressionEvaluationContextRecord {
@@ -6300,6 +6323,8 @@ public:
     /// context (i.e. the number of TypoExprs created).
     unsigned NumTypos;
 
+    unsigned LazyContextDeclPos;
+
     MaybeODRUseExprSet SavedMaybeODRUseExprs;
 
     /// The lambdas that are present within this context, if it
@@ -6309,7 +6334,8 @@ public:
     /// The declaration that provides context for lambda expressions
     /// and block literals if the normal declaration context does not
     /// suffice, e.g., in a default function argument.
-    Decl *ManglingContextDecl;
+    ContextDeclOrLazy ContextDecl;
+    ArrayRef<TemplateArgument> ContextArgs;
 
     /// If we are processing a decltype type, a set of call expressions
     /// for which we have deferred checking the completeness of the return type.
@@ -6349,6 +6375,8 @@ public:
       EK_Other
     } ExprContext;
 
+    bool HasReusedDeclContext = false;
+
     // A context can be nested in both a discarded statement context and
     // an immediate function context, so they need to be tracked independently.
     bool InDiscardedStatement;
@@ -6387,11 +6415,14 @@ public:
     ExpressionEvaluationContextRecord(ExpressionEvaluationContext Context,
                                       unsigned NumCleanupObjects,
                                       CleanupInfo ParentCleanup,
-                                      Decl *ManglingContextDecl,
-                                      ExpressionKind ExprContext)
+                                      ContextDeclOrLazy ContextDecl,
+                                      ArrayRef<TemplateArgument> ContextArgs,
+                                      ExpressionKind ExprContext,
+                                      unsigned LazyContextDeclPos)
         : Context(Context), ParentCleanup(ParentCleanup),
           NumCleanupObjects(NumCleanupObjects), NumTypos(0),
-          ManglingContextDecl(ManglingContextDecl), ExprContext(ExprContext),
+          LazyContextDeclPos(LazyContextDeclPos), ContextDecl(ContextDecl),
+          ContextArgs(ContextArgs), ExprContext(ExprContext),
           InDiscardedStatement(false), InImmediateFunctionContext(false),
           InImmediateEscalatingFunctionContext(false) {}
 
@@ -6530,7 +6561,9 @@ public:
                              ArrayRef<Expr *> Args);
 
   void PushExpressionEvaluationContext(
-      ExpressionEvaluationContext NewContext, Decl *LambdaContextDecl = nullptr,
+      ExpressionEvaluationContext NewContext,
+      ContextDeclOrLazy ContextDecl = nullptr,
+      ArrayRef<TemplateArgument> ContextArgs = std::nullopt,
       ExpressionEvaluationContextRecord::ExpressionKind Type =
           ExpressionEvaluationContextRecord::EK_Other);
   enum ReuseLambdaContextDecl_t { ReuseLambdaContextDecl };
@@ -6538,6 +6571,7 @@ public:
       ExpressionEvaluationContext NewContext, ReuseLambdaContextDecl_t,
       ExpressionEvaluationContextRecord::ExpressionKind Type =
           ExpressionEvaluationContextRecord::EK_Other);
+  void UpdateCurrentContextDecl(Decl *ContextDecl);
   void PopExpressionEvaluationContext();
 
   void DiscardCleanupsInEvaluationContext();
@@ -7930,6 +7964,8 @@ public:
   /// A stack of expression evaluation contexts.
   SmallVector<ExpressionEvaluationContextRecord, 8> ExprEvalContexts;
 
+  SmallVector<Decl *, 8> PendingLazyContextDecls;
+
   // Set of failed immediate invocations to avoid double diagnosing.
   llvm::SmallPtrSet<ConstantExpr *, 4> FailedImmediateInvocations;
 
@@ -8494,7 +8530,7 @@ public:
   RequiresExprBodyDecl *
   ActOnStartRequiresExpr(SourceLocation RequiresKWLoc,
                          ArrayRef<ParmVarDecl *> LocalParameters,
-                         Scope *BodyScope);
+                         Scope *BodyScope, unsigned TemplateDepth);
   void ActOnFinishRequiresExpr();
   concepts::Requirement *ActOnSimpleRequirement(Expr *E);
   concepts::Requirement *ActOnTypeRequirement(SourceLocation TypenameKWLoc,
@@ -8737,13 +8773,14 @@ public:
   /// Create a new lambda closure type.
   CXXRecordDecl *createLambdaClosureType(SourceRange IntroducerRange,
                                          TypeSourceInfo *Info,
-                                         unsigned LambdaDependencyKind,
-                                         LambdaCaptureDefault CaptureDefault);
+                                         LambdaCaptureDefault CaptureDefault,
+                                         unsigned TemplateDepth);
 
   /// Number lambda for linkage purposes if necessary.
   void handleLambdaNumbering(CXXRecordDecl *Class, CXXMethodDecl *Method,
                              std::optional<CXXRecordDecl::LambdaNumbering>
-                                 NumberingOverride = std::nullopt);
+                                 NumberingOverride = std::nullopt,
+                             bool InSignature = false);
 
   /// Endow the lambda scope info with the relevant properties.
   void buildLambdaScope(sema::LambdaScopeInfo *LSI, CXXMethodDecl *CallOperator,
@@ -8810,7 +8847,8 @@ public:
   /// We do the capture lookup here, but they are not actually captured until
   /// after we know what the qualifiers of the call operator are.
   void ActOnLambdaExpressionAfterIntroducer(LambdaIntroducer &Intro,
-                                            Scope *CurContext);
+                                            Scope *CurContext,
+                                            unsigned TemplateDepth);
 
   /// This is called after parsing the explicit template parameter list
   /// on a lambda (if it exists) in C++2a.
@@ -8888,8 +8926,10 @@ public:
   ///
   /// \param DC - The DeclContext containing the lambda expression or
   /// block literal.
-  std::tuple<MangleNumberingContext *, Decl *>
-  getCurrentMangleNumberContext(const DeclContext *DC);
+  std::tuple<MangleNumberingContext *, bool>
+  getCurrentMangleNumberContext(const DeclContext *DC,
+                                Decl *ManglingContextDecl,
+                                bool InSignature = false);
 
   ///@}
 
@@ -11201,8 +11241,6 @@ public:
   /// "class" or "typename" keyword. ParamName is the name of the
   /// parameter (NULL indicates an unnamed template parameter) and
   /// ParamNameLoc is the location of the parameter name (if any).
-  /// If the type parameter has a default argument, it will be added
-  /// later via ActOnTypeParameterDefault.
   NamedDecl *ActOnTypeParameter(Scope *S, bool Typename,
                                 SourceLocation EllipsisLoc,
                                 SourceLocation KeyLoc,
@@ -14745,7 +14783,8 @@ public:
   ///
   /// The result of this call will never be null, but the associated
   /// type may be a null type if there's an unrecoverable error.
-  TypeSourceInfo *GetTypeForDeclarator(Declarator &D);
+  TypeSourceInfo *GetTypeForDeclarator(Declarator &D,
+                                       bool *StartImplicitTemplate = nullptr);
   TypeSourceInfo *GetTypeForDeclaratorCast(Declarator &D, QualType FromTy);
 
   /// Package the given type and TSI into a ParsedType.

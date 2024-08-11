@@ -113,6 +113,9 @@ Parser::DeclGroupPtrTy Parser::ParseTemplateDeclarationOrSpecialization(
   bool LastParamListWasEmpty = false;
   TemplateParameterLists ParamLists;
   TemplateParameterDepthRAII CurTemplateDepthTracker(TemplateParameterDepth);
+  EnterExpressionEvaluationContext Eval(
+      getActions(), getActions().currentEvaluationContext().Context,
+      Sema::LazyContextDecl);
 
   do {
     // Consume the 'export', if any.
@@ -320,6 +323,10 @@ Parser::ParseConceptDefinition(const ParsedTemplateInfo &TemplateInfo,
   const IdentifierInfo *Id = Result.Identifier;
   SourceLocation IdLoc = Result.getBeginLoc();
 
+  EnterExpressionEvaluationContext Uneval(
+      getActions(), Sema::ExpressionEvaluationContext::Unevaluated,
+      Sema::LazyContextDecl);
+
   ParsedAttributes Attrs(AttrFactory);
   MaybeParseAttributes(PAKM_GNU | PAKM_CXX11, Attrs);
 
@@ -339,9 +346,12 @@ Parser::ParseConceptDefinition(const ParsedTemplateInfo &TemplateInfo,
   DeclEnd = Tok.getLocation();
   ExpectAndConsumeSemi(diag::err_expected_semi_declaration);
   Expr *ConstraintExpr = ConstraintExprResult.get();
-  return Actions.ActOnConceptDefinition(getCurScope(),
-                                        *TemplateInfo.TemplateParams, Id, IdLoc,
-                                        ConstraintExpr, Attrs);
+  Decl *CD = Actions.ActOnConceptDefinition(getCurScope(),
+                                            *TemplateInfo.TemplateParams, Id,
+                                            IdLoc, ConstraintExpr, Attrs);
+  if (CD)
+    getActions().UpdateCurrentContextDecl(CD);
+  return CD;
 }
 
 /// ParseTemplateParameters - Parses a template-parameter-list enclosed in
@@ -739,6 +749,9 @@ NamedDecl *Parser::ParseTypeParameter(unsigned Depth, unsigned Position) {
   SourceLocation EqualLoc;
   ParsedType DefaultArg;
   std::optional<DelayTemplateIdDestructionRAII> DontDestructTemplateIds;
+  EnterExpressionEvaluationContext Eval(
+      Actions, Actions.currentEvaluationContext().Context,
+      Sema::LazyContextDecl);
   if (TryConsumeToken(tok::equal, EqualLoc)) {
     // The default argument might contain a lambda declaration; avoid destroying
     // parsed template ids at the end of that declaration because they can be
@@ -755,13 +768,11 @@ NamedDecl *Parser::ParseTypeParameter(unsigned Depth, unsigned Position) {
             .get();
   }
 
-  NamedDecl *NewDecl = Actions.ActOnTypeParameter(getCurScope(),
-                                                  TypenameKeyword, EllipsisLoc,
-                                                  KeyLoc, ParamName, NameLoc,
-                                                  Depth, Position, EqualLoc,
-                                                  DefaultArg,
-                                                  TypeConstraint != nullptr);
-
+  NamedDecl *NewDecl = Actions.ActOnTypeParameter(
+      getCurScope(), TypenameKeyword, EllipsisLoc, KeyLoc, ParamName, NameLoc,
+      Depth, Position, EqualLoc, DefaultArg, TypeConstraint != nullptr);
+  if (EqualLoc.isValid())
+    Actions.UpdateCurrentContextDecl(NewDecl);
   if (TypeConstraint) {
     Actions.ActOnTypeConstraint(TypeConstraintSS, TypeConstraint,
                                 cast<TemplateTypeParmDecl>(NewDecl),
@@ -930,6 +941,10 @@ Parser::ParseNonTypeTemplateParameter(unsigned Depth, unsigned Position) {
   // we introduce the template parameter into the local scope.
   SourceLocation EqualLoc;
   ExprResult DefaultArg;
+  EnterExpressionEvaluationContext Eval(
+      Actions, Actions.currentEvaluationContext().Context,
+      /*ContextDecl=*/nullptr);
+  auto &ContextDecl = Actions.currentEvaluationContext().ContextDecl;
   if (TryConsumeToken(tok::equal, EqualLoc)) {
     if (Tok.is(tok::l_paren) && NextToken().is(tok::l_brace)) {
       Diag(Tok.getLocation(), diag::err_stmt_expr_in_default_arg) << 1;
@@ -958,9 +973,11 @@ Parser::ParseNonTypeTemplateParameter(unsigned Depth, unsigned Position) {
   }
 
   // Create the parameter.
-  return Actions.ActOnNonTypeTemplateParameter(getCurScope(), ParamDecl,
-                                               Depth, Position, EqualLoc,
-                                               DefaultArg.get());
+  NamedDecl *NewDecl = Actions.ActOnNonTypeTemplateParameter(
+      getCurScope(), ParamDecl, Depth, Position, EqualLoc, DefaultArg.get());
+  if (ContextDecl)
+    Actions.UpdateCurrentContextDecl(NewDecl);
+  return NewDecl;
 }
 
 void Parser::DiagnoseMisplacedEllipsis(SourceLocation EllipsisLoc,
@@ -1484,9 +1501,10 @@ ParsedTemplateArgument Parser::ParseTemplateArgument() {
   // argument before trying to disambiguate.
 
   EnterExpressionEvaluationContext EnterConstantEvaluated(
-    Actions, Sema::ExpressionEvaluationContext::ConstantEvaluated,
-    /*LambdaContextDecl=*/nullptr,
-    /*ExprContext=*/Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
+      Actions, Sema::ExpressionEvaluationContext::ConstantEvaluated,
+      Sema::ReuseLambdaContextDecl,
+      /*ExprContext=*/
+      Sema::ExpressionEvaluationContextRecord::EK_TemplateArgument);
   if (isCXXTypeId(TypeIdAsTemplateArgument)) {
     TypeResult TypeArg = ParseTypeName(
         /*Range=*/nullptr, DeclaratorContext::TemplateArg);
