@@ -12040,7 +12040,7 @@ public:
       bool *ConstraintsNotSatisfied = nullptr);
 
   bool CheckTemplateTypeArgument(
-      TemplateTypeParmDecl *Param, TemplateArgumentLoc &Arg,
+      TemplateArgumentLoc &Arg,
       SmallVectorImpl<TemplateArgument> &SugaredConverted,
       SmallVectorImpl<TemplateArgument> &CanonicalConverted);
 
@@ -12080,9 +12080,13 @@ public:
                                                TemplateTemplateParmDecl *Param,
                                                const TemplateArgumentLoc &Arg);
 
+  /// Print the given named declaration to a string,
+  /// using the current PrintingPolicy, except that
+  /// TerseOutput will always be set.
+  SmallString<128> toTerseString(const NamedDecl &D) const;
+
   void NoteTemplateLocation(const NamedDecl &Decl,
                             std::optional<SourceRange> ParamRange = {});
-  void NoteTemplateParameterLocation(const NamedDecl &Decl);
 
   /// Given a non-type template argument that refers to a
   /// declaration and the type of its corresponding non-type template
@@ -12197,15 +12201,13 @@ public:
   bool TemplateParameterListsAreEqual(
       const TemplateCompareNewDeclInfo &NewInstFrom, TemplateParameterList *New,
       const NamedDecl *OldInstFrom, TemplateParameterList *Old, bool Complain,
-      TemplateParameterListEqualKind Kind,
-      SourceLocation TemplateArgLoc = SourceLocation());
+      TemplateParameterListEqualKind Kind);
 
-  bool TemplateParameterListsAreEqual(
-      TemplateParameterList *New, TemplateParameterList *Old, bool Complain,
-      TemplateParameterListEqualKind Kind,
-      SourceLocation TemplateArgLoc = SourceLocation()) {
+  bool TemplateParameterListsAreEqual(TemplateParameterList *New,
+                                      TemplateParameterList *Old, bool Complain,
+                                      TemplateParameterListEqualKind Kind) {
     return TemplateParameterListsAreEqual(nullptr, New, nullptr, Old, Complain,
-                                          Kind, TemplateArgLoc);
+                                          Kind);
   }
 
   /// Check whether a template can be declared within this scope.
@@ -13168,6 +13170,11 @@ public:
 
       /// We are performing partial ordering for template template parameters.
       PartialOrderingTTP,
+
+      /// We are Checking a Template Parameter, so for any diagnostics which
+      /// occur in this scope, we will add a context note which points to this
+      /// template parameter.
+      CheckTemplateParameter,
     } Kind;
 
     /// Whether we're substituting into constraints.
@@ -13386,6 +13393,10 @@ public:
                           PartialOrderingTTP, TemplateDecl *PArg,
                           SourceRange InstantiationRange = SourceRange());
 
+    struct CheckTemplateParameter {};
+    /// \brief Note that we are checking a template parameter.
+    InstantiatingTemplate(Sema &SemaRef, CheckTemplateParameter);
+
     /// Note that we have finished instantiating this template.
     void Clear();
 
@@ -13409,6 +13420,30 @@ public:
     InstantiatingTemplate(const InstantiatingTemplate &) = delete;
 
     InstantiatingTemplate &operator=(const InstantiatingTemplate &) = delete;
+  };
+
+  /// For any diagnostics which occur within its scope, adds a context note
+  /// pointing to the declaration of the template parameter.
+  struct CheckTemplateParameterRAII : InstantiatingTemplate {
+    CheckTemplateParameterRAII(Sema &S, NamedDecl *Param = nullptr)
+        : InstantiatingTemplate(S, CheckTemplateParameter()),
+          Context(isInvalid() ? nullptr : &S.CodeSynthesisContexts.back()) {
+      setParam(Param);
+    }
+
+    void setParam(NamedDecl *Param) {
+      assert(!Param || Param->isTemplateParameter());
+      if (isInvalid())
+        return;
+      Context->Entity = Param;
+      Context->PointOfInstantiation =
+          Param ? Param->getLocation() : SourceLocation();
+      Context->InstantiationRange =
+          Param ? Param->getSourceRange() : SourceRange();
+    }
+
+  private:
+    Sema::CodeSynthesisContext *Context;
   };
 
   bool SubstTemplateArgument(const TemplateArgumentLoc &Input,

@@ -593,6 +593,7 @@ bool Sema::CodeSynthesisContext::isInstantiationRecord() const {
   case BuildingDeductionGuides:
   case TypeAliasTemplateInstantiation:
   case PartialOrderingTTP:
+  case CheckTemplateParameter:
     return false;
 
   // This function should never be called when Kind's value is Memoization.
@@ -819,7 +820,14 @@ Sema::InstantiatingTemplate::InstantiatingTemplate(
     Sema &SemaRef, SourceLocation ArgLoc, PartialOrderingTTP,
     TemplateDecl *PArg, SourceRange InstantiationRange)
     : InstantiatingTemplate(SemaRef, CodeSynthesisContext::PartialOrderingTTP,
-                            ArgLoc, InstantiationRange, PArg) {}
+                            ArgLoc, SourceRange(), PArg) {}
+
+Sema::InstantiatingTemplate::InstantiatingTemplate(Sema &SemaRef,
+                                                   CheckTemplateParameter)
+    : InstantiatingTemplate(
+          SemaRef, CodeSynthesisContext::CheckTemplateParameter,
+          /*PointOfInstantiation*/ SourceLocation(),
+          /*InstantiationRange=*/SourceRange(), /*Entity=*/nullptr) {}
 
 bool Sema::pushCodeSynthesisContext(CodeSynthesisContext Ctx) {
   if (!Ctx.isInstantiationRecord()) {
@@ -1254,12 +1262,20 @@ void Sema::PrintInstantiationStack(InstantiationContextDiagFuncRef DiagFunc) {
     case CodeSynthesisContext::PartialOrderingTTP:
       DiagFunc(Active->PointOfInstantiation,
                PDiag(diag::note_template_arg_template_params_mismatch));
-      if (SourceLocation ParamLoc = Active->Entity->getLocation();
-          ParamLoc.isValid())
-        DiagFunc(ParamLoc, PDiag(diag::note_template_prev_declaration)
-                               << /*isTemplateTemplateParam=*/true
-                               << Active->InstantiationRange);
       break;
+    case CodeSynthesisContext::CheckTemplateParameter: {
+      if (!Active->Entity)
+        break;
+      const auto &ND = *cast<NamedDecl>(Active->Entity);
+      if (SourceLocation Loc = ND.getLocation(); Loc.isValid()) {
+        DiagFunc(Loc, PDiag(diag::note_template_param_here)
+                          << ND.getSourceRange());
+        break;
+      }
+      DiagFunc(SourceLocation(), PDiag(diag::note_template_param_external)
+                                     << toTerseString(ND).str());
+      break;
+    }
     }
   }
 }

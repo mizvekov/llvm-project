@@ -141,7 +141,7 @@ namespace SpecialMembers {
 
 namespace PR12031 {
   struct X {
-    template<typename T>
+    template<typename T> // cxx03-note {{template parameter is declared here}}
     X(const T&);
     ~X();
   };
@@ -448,7 +448,7 @@ struct A {
   // expected-error@-1 {{field has incomplete type 'void'}}
 };
 
-template <typename F>
+template <typename F> // cxx03-note {{template parameter is declared here}}
 void g(F f) {
   auto a = A<decltype(f())>();
   // expected-note@-1 {{in instantiation of template class 'PR20731::A<void>' requested here}}
@@ -505,12 +505,14 @@ namespace error_in_transform_prototype {
 
 namespace PR21857 {
   template<typename Fn> struct fun : Fn {
+    // cxx03-note@-1 {{template parameter is declared here}}
     fun() = default;
     using Fn::operator();
   };
   template<typename Fn> fun<Fn> wrap(Fn fn); // cxx03-warning {{template argument uses unnamed type}}
+                                             // cxx03-note@-1 {{template parameter is declared here}}
   auto x = wrap([](){}); // cxx03-warning {{template argument uses unnamed type}} cxx03-note 2 {{unnamed type used in template argument was declared here}}
-                         // cxx03-note@-1 {{while substituting deduced template arguments into function template}}
+                         // cxx03-note@-1 2{{while substituting deduced template arguments into function template}}
 }
 
 namespace PR13987 {
@@ -570,7 +572,10 @@ void foo() {
 }
 
 namespace PR27994 {
-struct A { template <class T> A(T); };
+struct A {
+  template <class T> // cxx03-note 5{{template parameter is declared here}}
+    A(T);
+};
 
 template <class T>
 struct B { // #PR27994_B
@@ -611,7 +616,7 @@ namespace PR30566 {
 int name1; // expected-note {{'name1' declared here}}
 
 struct S1 {
-  template<class T>
+  template<class T> // cxx03-note 2{{template parameter is declared here}}
   S1(T t) { s = sizeof(t); }
   int s;
 };

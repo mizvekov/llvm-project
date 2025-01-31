@@ -920,9 +920,11 @@ void Sema::DiagnoseTemplateParameterShadow(SourceLocation Loc, Decl *PrevDecl,
           ? diag::ext_template_param_shadow
           : (SupportedForCompatibility ? diag::ext_compat_template_param_shadow
                                        : diag::err_template_param_shadow);
-  const auto *ND = cast<NamedDecl>(PrevDecl);
+  auto *ND = cast<NamedDecl>(PrevDecl);
+  CheckTemplateParameterRAII CTP(*this, ND);
+  // FIXME: Don't put the name in the diagnostic, unless there is no source
+  // location.
   Diag(Loc, DiagId) << ND->getDeclName();
-  NoteTemplateParameterLocation(*ND);
 }
 
 TemplateDecl *Sema::AdjustDeclIfTemplate(Decl *&D) {
@@ -5152,7 +5154,7 @@ TemplateNameKind Sema::ActOnTemplateName(Scope *S,
 }
 
 bool Sema::CheckTemplateTypeArgument(
-    TemplateTypeParmDecl *Param, TemplateArgumentLoc &AL,
+    TemplateArgumentLoc &AL,
     SmallVectorImpl<TemplateArgument> &SugaredConverted,
     SmallVectorImpl<TemplateArgument> &CanonicalConverted) {
   const TemplateArgument &Arg = AL.getArgument();
@@ -5208,7 +5210,6 @@ bool Sema::CheckTemplateTypeArgument(
                       ? diag::ext_ms_template_type_arg_missing_typename
                       : diag::err_template_arg_must_be_type_suggest)
             << FixItHint::CreateInsertion(Loc, "typename ");
-        NoteTemplateParameterLocation(*Param);
 
         // Recover by synthesizing a type using the location information that we
         // already have.
@@ -5247,7 +5248,6 @@ bool Sema::CheckTemplateTypeArgument(
     // is not a type.
     SourceRange SR = AL.getSourceRange();
     Diag(SR.getBegin(), diag::err_template_arg_must_be_type) << SR;
-    NoteTemplateParameterLocation(*Param);
 
     return true;
   }
@@ -5520,8 +5520,8 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param, TemplateArgumentLoc &ArgLoc,
                                  CheckTemplateArgumentInfo &CTAI,
                                  CheckTemplateArgumentKind CTAK) {
   // Check template type parameters.
-  if (TemplateTypeParmDecl *TTP = dyn_cast<TemplateTypeParmDecl>(Param))
-    return CheckTemplateTypeArgument(TTP, ArgLoc, CTAI.SugaredConverted,
+  if (isa<TemplateTypeParmDecl>(Param))
+    return CheckTemplateTypeArgument(ArgLoc, CTAI.SugaredConverted,
                                      CTAI.CanonicalConverted);
 
   const TemplateArgument &Arg = ArgLoc.getArgument();
@@ -5663,8 +5663,6 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param, TemplateArgumentLoc &ArgLoc,
       // therefore cannot be a non-type template argument.
       Diag(ArgLoc.getLocation(), diag::err_template_arg_must_be_expr)
           << ArgLoc.getSourceRange();
-      NoteTemplateParameterLocation(*Param);
-
       return true;
 
     case TemplateArgument::Type: {
@@ -5684,7 +5682,6 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param, TemplateArgumentLoc &ArgLoc,
         Diag(SR.getBegin(), diag::err_template_arg_nontype_ambig) << SR << T;
       else
         Diag(SR.getBegin(), diag::err_template_arg_must_be_expr) << SR;
-      NoteTemplateParameterLocation(*Param);
       return true;
     }
 
@@ -5788,11 +5785,11 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param, TemplateArgumentLoc &ArgLoc,
 }
 
 /// Diagnose a missing template argument.
-template<typename TemplateParmDecl>
+template <typename TemplateParmDecl>
 static bool diagnoseMissingArgument(Sema &S, SourceLocation Loc,
-                                    TemplateDecl *TD,
-                                    const TemplateParmDecl *D,
-                                    TemplateArgumentListInfo &Args) {
+                                    TemplateDecl *TD, const TemplateParmDecl *D,
+                                    TemplateArgumentListInfo &Args,
+                                    bool MatchingTTP) {
   // Dig out the most recent declaration of the template parameter; there may be
   // declarations of the template that are more recent than TD.
   D = cast<TemplateParmDecl>(cast<TemplateDecl>(TD->getMostRecentDecl())
@@ -5810,16 +5807,12 @@ static bool diagnoseMissingArgument(Sema &S, SourceLocation Loc,
     return true;
   }
 
+  SourceLocation DiagLoc = Args.getRAngleLoc();
   // FIXME: If there's a more recent default argument that *is* visible,
   // diagnose that it was declared too late.
-
-  TemplateParameterList *Params = TD->getTemplateParameters();
-
-  S.Diag(Loc, diag::err_template_arg_list_different_arity)
-    << /*not enough args*/0
-    << (int)S.getTemplateNameKindForDiagnostics(TemplateName(TD))
-    << TD;
-  S.NoteTemplateLocation(*TD, Params->getSourceRange());
+  S.Diag(DiagLoc.isValid() ? DiagLoc : Loc,
+         MatchingTTP ? diag::err_template_template_param_missing_param
+                     : diag::err_template_param_missing_arg);
   return true;
 }
 
@@ -5865,11 +5858,14 @@ bool Sema::CheckTemplateArgumentList(
   SmallVector<TemplateArgument, 2> CanonicalArgumentPack;
   unsigned ArgIdx = 0, NumArgs = NewArgs.size();
   LocalInstantiationScope InstScope(*this, true);
+  CheckTemplateParameterRAII CTP(*this);
   for (TemplateParameterList::iterator ParamBegin = Params->begin(),
                                        ParamEnd = Params->end(),
                                        Param = ParamBegin;
        Param != ParamEnd;
        /* increment in loop */) {
+    CTP.setParam(*Param);
+
     if (size_t ParamIdx = Param - ParamBegin;
         DefaultArgs && ParamIdx >= DefaultArgs.StartPos) {
       // All written arguments should have been consumed by this point.
@@ -5906,11 +5902,9 @@ bool Sema::CheckTemplateArgumentList(
         continue;
       } else if (ArgIdx == NumArgs && !PartialTemplateArgs) {
         // Not enough arguments for this parameter pack.
-        Diag(TemplateLoc, diag::err_template_arg_list_different_arity)
-          << /*not enough args*/0
-          << (int)getTemplateNameKindForDiagnostics(TemplateName(Template))
-          << Template;
-        NoteTemplateLocation(*Template, Params->getSourceRange());
+        Diag(RAngleLoc, CTAI.MatchingTTP
+                            ? diag::err_template_template_param_missing_param
+                            : diag::err_template_param_missing_arg);
         return true;
       }
     }
@@ -5948,6 +5942,7 @@ bool Sema::CheckTemplateArgumentList(
         SmallVector<TemplateArgument, 4> Args(ParamEnd - Param);
         for (TemplateParameterList::iterator First = Param; Param != ParamEnd;
              ++Param) {
+          CTP.setParam(*Param);
           TemplateArgument &Arg = Args[Param - First];
           Arg = ArgLoc.getArgument();
           if (!(*Param)->isTemplateParameterPack() ||
@@ -5988,7 +5983,6 @@ bool Sema::CheckTemplateArgumentList(
                  diag::err_template_expansion_into_fixed_list)
                 << (isa<ConceptDecl>(Template) ? 1 : 0)
                 << ArgLoc.getSourceRange();
-            NoteTemplateParameterLocation(**Param);
             return true;
           }
         }
@@ -6095,14 +6089,14 @@ bool Sema::CheckTemplateArgumentList(
       if (!HasDefaultArg) {
         if (TemplateTypeParmDecl *TTP = dyn_cast<TemplateTypeParmDecl>(*Param))
           return diagnoseMissingArgument(*this, TemplateLoc, Template, TTP,
-                                         NewArgs);
+                                         NewArgs, CTAI.MatchingTTP);
         if (NonTypeTemplateParmDecl *NTTP =
                 dyn_cast<NonTypeTemplateParmDecl>(*Param))
           return diagnoseMissingArgument(*this, TemplateLoc, Template, NTTP,
-                                         NewArgs);
+                                         NewArgs, CTAI.MatchingTTP);
         return diagnoseMissingArgument(*this, TemplateLoc, Template,
                                        cast<TemplateTemplateParmDecl>(*Param),
-                                       NewArgs);
+                                       NewArgs, CTAI.MatchingTTP);
       }
       return true;
     }
@@ -6138,6 +6132,7 @@ bool Sema::CheckTemplateArgumentList(
     ++Param;
     ++ArgIdx;
   }
+  CTP.Clear();
 
   // If we're performing a partial argument substitution, allow any trailing
   // pack expansions; they might be empty. This can happen even if
@@ -6158,8 +6153,7 @@ bool Sema::CheckTemplateArgumentList(
   // If we have any leftover arguments, then there were too many arguments.
   // Complain and fail.
   if (ArgIdx < NumArgs) {
-    Diag(TemplateLoc, diag::err_template_arg_list_different_arity)
-        << /*too many args*/1
+    Diag(TemplateLoc, diag::err_template_too_many_args)
         << (int)getTemplateNameKindForDiagnostics(TemplateName(Template))
         << Template
         << SourceRange(NewArgs[ArgIdx].getLocation(), NewArgs.getRAngleLoc());
@@ -6588,8 +6582,6 @@ isNullPointerValueTemplateArgument(Sema &S, NamedDecl *Param,
       << Arg->getType() << Arg->getSourceRange();
     for (unsigned I = 0, N = Notes.size(); I != N; ++I)
       S.Diag(Notes[I].first, Notes[I].second);
-
-    S.NoteTemplateParameterLocation(*Param);
     return NPV_Error;
   }
 
@@ -6614,8 +6606,7 @@ isNullPointerValueTemplateArgument(Sema &S, NamedDecl *Param,
     // The types didn't match, but we know we got a null pointer; complain,
     // then recover as if the types were correct.
     S.Diag(Arg->getExprLoc(), diag::err_template_arg_wrongtype_null_constant)
-      << Arg->getType() << ParamType << Arg->getSourceRange();
-    S.NoteTemplateParameterLocation(*Param);
+        << Arg->getType() << ParamType << Arg->getSourceRange();
     return NPV_NullPointer;
   }
 
@@ -6624,8 +6615,7 @@ isNullPointerValueTemplateArgument(Sema &S, NamedDecl *Param,
     // We could just return NPV_NotNullPointer, but we can print a better
     // message with the information we have here.
     S.Diag(Arg->getExprLoc(), diag::err_template_arg_invalid)
-      << EvalResult.Val.getAsString(S.Context, ParamType);
-    S.NoteTemplateParameterLocation(*Param);
+        << EvalResult.Val.getAsString(S.Context, ParamType);
     return NPV_Error;
   }
 
@@ -6637,7 +6627,6 @@ isNullPointerValueTemplateArgument(Sema &S, NamedDecl *Param,
         << ParamType << FixItHint::CreateInsertion(Arg->getBeginLoc(), Code)
         << FixItHint::CreateInsertion(S.getLocForEndOfToken(Arg->getEndLoc()),
                                       ")");
-    S.NoteTemplateParameterLocation(*Param);
     return NPV_NullPointer;
   }
 
@@ -6679,7 +6668,6 @@ CheckTemplateArgumentIsCompatibleWithParameter(Sema &S, NamedDecl *Param,
           S.Diag(Arg->getBeginLoc(),
                  diag::err_template_arg_ref_bind_ignores_quals)
               << ParamType << Arg->getType() << Arg->getSourceRange();
-          S.NoteTemplateParameterLocation(*Param);
           return true;
         }
       }
@@ -6697,7 +6685,6 @@ CheckTemplateArgumentIsCompatibleWithParameter(Sema &S, NamedDecl *Param,
       else
         S.Diag(Arg->getBeginLoc(), diag::err_template_arg_not_convertible)
             << ArgIn->getType() << ParamType << Arg->getSourceRange();
-      S.NoteTemplateParameterLocation(*Param);
       return true;
     }
   }
@@ -6837,7 +6824,6 @@ static bool CheckTemplateArgumentAddressOfObjectOrFunction(
   if (!Entity) {
     S.Diag(Arg->getBeginLoc(), diag::err_template_arg_not_decl_ref)
         << Arg->getSourceRange();
-    S.NoteTemplateParameterLocation(*Param);
     return true;
   }
 
@@ -6845,7 +6831,6 @@ static bool CheckTemplateArgumentAddressOfObjectOrFunction(
   if (isa<FieldDecl>(Entity) || isa<IndirectFieldDecl>(Entity)) {
     S.Diag(Arg->getBeginLoc(), diag::err_template_arg_field)
         << Entity << Arg->getSourceRange();
-    S.NoteTemplateParameterLocation(*Param);
     return true;
   }
 
@@ -6854,7 +6839,6 @@ static bool CheckTemplateArgumentAddressOfObjectOrFunction(
     if (!Method->isStatic()) {
       S.Diag(Arg->getBeginLoc(), diag::err_template_arg_method)
           << Method << Arg->getSourceRange();
-      S.NoteTemplateParameterLocation(*Param);
       return true;
     }
   }
@@ -6894,7 +6878,6 @@ static bool CheckTemplateArgumentAddressOfObjectOrFunction(
     if (Var->getType()->isReferenceType()) {
       S.Diag(Arg->getBeginLoc(), diag::err_template_arg_reference_var)
           << Var->getType() << Arg->getSourceRange();
-      S.NoteTemplateParameterLocation(*Param);
       return true;
     }
 
@@ -6914,15 +6897,12 @@ static bool CheckTemplateArgumentAddressOfObjectOrFunction(
     if (!S.Context.hasSameUnqualifiedType(Entity->getType(),
                                           ParamType.getNonReferenceType())) {
       S.Diag(AddrOpLoc, diag::err_template_arg_address_of_non_pointer)
-        << ParamType;
-      S.NoteTemplateParameterLocation(*Param);
+          << ParamType;
       return true;
     }
 
     S.Diag(AddrOpLoc, diag::err_template_arg_address_of_non_pointer)
-      << ParamType
-      << FixItHint::CreateRemoval(AddrOpLoc);
-    S.NoteTemplateParameterLocation(*Param);
+        << ParamType << FixItHint::CreateRemoval(AddrOpLoc);
 
     ArgType = Entity->getType();
   }
@@ -6943,15 +6923,12 @@ static bool CheckTemplateArgumentAddressOfObjectOrFunction(
       ArgType = S.Context.getPointerType(Entity->getType());
       if (!S.Context.hasSameUnqualifiedType(ArgType, ParamType)) {
         S.Diag(Arg->getBeginLoc(), diag::err_template_arg_not_address_of)
-          << ParamType;
-        S.NoteTemplateParameterLocation(*Param);
+            << ParamType;
         return true;
       }
 
       S.Diag(Arg->getBeginLoc(), diag::err_template_arg_not_address_of)
-        << ParamType << FixItHint::CreateInsertion(Arg->getBeginLoc(), "&");
-
-      S.NoteTemplateParameterLocation(*Param);
+          << ParamType << FixItHint::CreateInsertion(Arg->getBeginLoc(), "&");
     }
   }
 
@@ -7062,7 +7039,6 @@ static bool CheckTemplateArgumentPointerToMember(
     // We can't perform this conversion.
     S.Diag(ResultArg->getBeginLoc(), diag::err_template_arg_not_convertible)
         << ResultArg->getType() << ParamType << ResultArg->getSourceRange();
-    S.NoteTemplateParameterLocation(*Param);
     return true;
   }
 
@@ -7172,7 +7148,6 @@ ExprResult Sema::CheckTemplateArgument(NamedDecl *Param, QualType ParamType,
                  diag::err_non_type_template_parm_type_deduction_failure)
                 << Param->getDeclName() << NTTP->getType() << Arg->getType()
                 << Arg->getSourceRange();
-          NoteTemplateParameterLocation(*Param);
           return ExprError();
         }
         ParamType = SubstAutoTypeDependent(ParamType);
@@ -7184,10 +7159,8 @@ ExprResult Sema::CheckTemplateArgument(NamedDecl *Param, QualType ParamType,
     // declaration, but here we'll pass the argument location because that's
     // where the parameter type is deduced.
     ParamType = CheckNonTypeTemplateParameterType(ParamType, Arg->getExprLoc());
-    if (ParamType.isNull()) {
-      NoteTemplateParameterLocation(*Param);
+    if (ParamType.isNull())
       return ExprError();
-    }
   }
 
   // We should have already dropped all cv-qualifiers by now.
@@ -7227,7 +7200,6 @@ ExprResult Sema::CheckTemplateArgument(NamedDecl *Param, QualType ParamType,
     // template parameter type.
     Diag(StartLoc, diag::err_deduced_non_type_template_arg_type_mismatch)
         << Arg->getType() << ParamType.getUnqualifiedType();
-    NoteTemplateParameterLocation(*Param);
     return ExprError();
   }
 
@@ -7310,10 +7282,8 @@ ExprResult Sema::CheckTemplateArgument(NamedDecl *Param, QualType ParamType,
           DeductionArg, ParamType,
           StrictCheck ? CCEKind::TempArgStrict : CCEKind::TemplateArg, Param);
       assert(!ArgResult.isUnset());
-      if (ArgResult.isInvalid()) {
-        NoteTemplateParameterLocation(*Param);
+      if (ArgResult.isInvalid())
         return ExprError();
-      }
     } else {
       ArgResult = DeductionArg;
     }
@@ -7479,7 +7449,6 @@ ExprResult Sema::CheckTemplateArgument(NamedDecl *Param, QualType ParamType,
     if (!ArgType->isIntegralOrEnumerationType()) {
       Diag(Arg->getBeginLoc(), diag::err_template_arg_not_integral_or_enumeral)
           << ArgType << Arg->getSourceRange();
-      NoteTemplateParameterLocation(*Param);
       return ExprError();
     }
     if (!Arg->isValueDependent()) {
@@ -7518,7 +7487,6 @@ ExprResult Sema::CheckTemplateArgument(NamedDecl *Param, QualType ParamType,
       // We can't perform this conversion.
       Diag(StartLoc, diag::err_template_arg_not_convertible)
           << Arg->getType() << ParamType << Arg->getSourceRange();
-      NoteTemplateParameterLocation(*Param);
       return ExprError();
     }
 
@@ -7564,7 +7532,6 @@ ExprResult Sema::CheckTemplateArgument(NamedDecl *Param, QualType ParamType,
         Diag(Arg->getBeginLoc(), diag::warn_template_arg_negative)
             << toString(OldValue, 10) << toString(Value, 10) << ParamType
             << Arg->getSourceRange();
-        NoteTemplateParameterLocation(*Param);
       }
 
       // Complain if we overflowed the template parameter's type.
@@ -7575,12 +7542,10 @@ ExprResult Sema::CheckTemplateArgument(NamedDecl *Param, QualType ParamType,
         RequiredBits = OldValue.getActiveBits() + 1;
       else
         RequiredBits = OldValue.getSignificantBits();
-      if (RequiredBits > AllowedBits) {
+      if (RequiredBits > AllowedBits)
         Diag(Arg->getBeginLoc(), diag::warn_template_arg_too_large)
             << toString(OldValue, 10) << toString(Value, 10) << ParamType
             << Arg->getSourceRange();
-        NoteTemplateParameterLocation(*Param);
-      }
     }
 
     QualType T = ParamType->isEnumeralType() ? ParamType : IntegerType;
@@ -7706,7 +7671,6 @@ ExprResult Sema::CheckTemplateArgument(NamedDecl *Param, QualType ParamType,
     case NPV_NotNullPointer:
       Diag(Arg->getExprLoc(), diag::err_template_arg_not_convertible)
           << Arg->getType() << ParamType;
-      NoteTemplateParameterLocation(*Param);
       return ExprError();
 
     case NPV_Error:
@@ -7734,7 +7698,7 @@ ExprResult Sema::CheckTemplateArgument(NamedDecl *Param, QualType ParamType,
 
 static void DiagnoseTemplateParameterListArityMismatch(
     Sema &S, TemplateParameterList *New, TemplateParameterList *Old,
-    Sema::TemplateParameterListEqualKind Kind, SourceLocation TemplateArgLoc);
+    Sema::TemplateParameterListEqualKind Kind);
 
 bool Sema::CheckDeclCompatibleWithTemplateTemplate(
     TemplateDecl *Template, TemplateTemplateParmDecl *Param,
@@ -7862,7 +7826,6 @@ bool Sema::CheckTemplateTemplateArgument(TemplateTemplateParmDecl *Param,
     Diag(Arg.getLocation(),
          diag::err_template_template_parameter_not_at_least_as_constrained)
         << Template << Param << Arg.getSourceRange();
-    Diag(Param->getLocation(), diag::note_entity_declared_at) << Param;
     Diag(Template->getLocation(), diag::note_entity_declared_at) << Template;
     MaybeEmitAmbiguousAtomicConstraintsDiagnostic(Param, ParamsAC, Template,
                                                   TemplateAC);
@@ -7871,35 +7834,29 @@ bool Sema::CheckTemplateTemplateArgument(TemplateTemplateParmDecl *Param,
   return false;
 }
 
-static Sema::SemaDiagnosticBuilder noteLocation(Sema &S, const NamedDecl &Decl,
-                                                unsigned HereDiagID,
-                                                unsigned ExternalDiagID) {
-  if (Decl.getLocation().isValid())
-    return S.Diag(Decl.getLocation(), HereDiagID);
-
+SmallString<128> Sema::toTerseString(const NamedDecl &D) const {
   SmallString<128> Str;
   llvm::raw_svector_ostream Out(Str);
-  PrintingPolicy PP = S.getPrintingPolicy();
+  PrintingPolicy PP = getPrintingPolicy();
   PP.TerseOutput = 1;
-  Decl.print(Out, PP);
-  return S.Diag(Decl.getLocation(), ExternalDiagID) << Out.str();
+  D.print(Out, PP);
+  return Str;
 }
 
+// FIXME: Transform this into a context note.
 void Sema::NoteTemplateLocation(const NamedDecl &Decl,
                                 std::optional<SourceRange> ParamRange) {
+  bool HasLoc = Decl.getLocation().isValid();
   SemaDiagnosticBuilder DB =
-      noteLocation(*this, Decl, diag::note_template_decl_here,
-                   diag::note_template_decl_external);
+      Diag(Decl.getLocation(), HasLoc ? diag::note_template_decl_here
+                                      : diag::note_template_decl_external);
+  if (!HasLoc)
+    DB << toTerseString(Decl).str();
   if (ParamRange && ParamRange->isValid()) {
     assert(Decl.getLocation().isValid() &&
            "Parameter range has location when Decl does not");
     DB << *ParamRange;
   }
-}
-
-void Sema::NoteTemplateParameterLocation(const NamedDecl &Decl) {
-  noteLocation(*this, Decl, diag::note_template_param_here,
-               diag::note_template_param_external);
 }
 
 /// Given a non-type template argument that refers to a
@@ -8179,21 +8136,17 @@ Sema::BuildExpressionFromNonTypeTemplateArgument(const TemplateArgument &Arg,
 }
 
 /// Match two template parameters within template parameter lists.
-static bool MatchTemplateParameterKind(
-    Sema &S, NamedDecl *New,
-    const Sema::TemplateCompareNewDeclInfo &NewInstFrom, NamedDecl *Old,
-    const NamedDecl *OldInstFrom, bool Complain,
-    Sema::TemplateParameterListEqualKind Kind, SourceLocation TemplateArgLoc) {
+static bool
+MatchTemplateParameterKind(Sema &S, NamedDecl *New,
+                           const Sema::TemplateCompareNewDeclInfo &NewInstFrom,
+                           NamedDecl *Old, const NamedDecl *OldInstFrom,
+                           bool Complain,
+                           Sema::TemplateParameterListEqualKind Kind) {
   // Check the actual kind (type, non-type, template).
   if (Old->getKind() != New->getKind()) {
     if (Complain) {
-      unsigned NextDiag = diag::err_template_param_different_kind;
-      if (TemplateArgLoc.isValid()) {
-        S.Diag(TemplateArgLoc, diag::err_template_arg_template_params_mismatch);
-        NextDiag = diag::note_template_param_different_kind;
-      }
-      S.Diag(New->getLocation(), NextDiag)
-        << (Kind != Sema::TPL_TemplateMatch);
+      S.Diag(New->getLocation(), diag::err_template_param_different_kind)
+          << (Kind != Sema::TPL_TemplateMatch);
       S.Diag(Old->getLocation(), diag::note_template_prev_declaration)
         << (Kind != Sema::TPL_TemplateMatch);
     }
@@ -8207,18 +8160,11 @@ static bool MatchTemplateParameterKind(
   // a parameter pack where the template template argument does not.
   if (Old->isTemplateParameterPack() != New->isTemplateParameterPack()) {
     if (Complain) {
-      unsigned NextDiag = diag::err_template_parameter_pack_non_pack;
-      if (TemplateArgLoc.isValid()) {
-        S.Diag(TemplateArgLoc,
-             diag::err_template_arg_template_params_mismatch);
-        NextDiag = diag::note_template_parameter_pack_non_pack;
-      }
-
       unsigned ParamKind = isa<TemplateTypeParmDecl>(New)? 0
                       : isa<NonTypeTemplateParmDecl>(New)? 1
                       : 2;
-      S.Diag(New->getLocation(), NextDiag)
-        << ParamKind << New->isParameterPack();
+      S.Diag(New->getLocation(), diag::err_template_parameter_pack_non_pack)
+          << ParamKind << New->isParameterPack();
       S.Diag(Old->getLocation(), diag::note_template_parameter_pack_here)
         << ParamKind << Old->isParameterPack();
     }
@@ -8245,13 +8191,8 @@ static bool MatchTemplateParameterKind(
       QualType NewType = S.Context.getUnconstrainedType(NewNTTP->getType());
       if (!S.Context.hasSameType(OldType, NewType)) {
         if (Complain) {
-          unsigned NextDiag = diag::err_template_nontype_parm_different_type;
-          if (TemplateArgLoc.isValid()) {
-            S.Diag(TemplateArgLoc,
-                   diag::err_template_arg_template_params_mismatch);
-            NextDiag = diag::note_template_nontype_parm_different_type;
-          }
-          S.Diag(NewNTTP->getLocation(), NextDiag)
+          S.Diag(NewNTTP->getLocation(),
+                 diag::err_template_nontype_parm_different_type)
               << NewNTTP->getType() << (Kind != Sema::TPL_TemplateMatch);
           S.Diag(OldNTTP->getLocation(),
                  diag::note_template_nontype_parm_prev_declaration)
@@ -8274,8 +8215,7 @@ static bool MatchTemplateParameterKind(
             OldTTP->getTemplateParameters(), Complain,
             (Kind == Sema::TPL_TemplateMatch
                  ? Sema::TPL_TemplateTemplateParmMatch
-                 : Kind),
-            TemplateArgLoc))
+                 : Kind)))
       return false;
   }
 
@@ -8327,21 +8267,12 @@ static bool MatchTemplateParameterKind(
 
 /// Diagnose a known arity mismatch when comparing template argument
 /// lists.
-static
-void DiagnoseTemplateParameterListArityMismatch(Sema &S,
-                                                TemplateParameterList *New,
-                                                TemplateParameterList *Old,
-                                      Sema::TemplateParameterListEqualKind Kind,
-                                                SourceLocation TemplateArgLoc) {
-  unsigned NextDiag = diag::err_template_param_list_different_arity;
-  if (TemplateArgLoc.isValid()) {
-    S.Diag(TemplateArgLoc, diag::err_template_arg_template_params_mismatch);
-    NextDiag = diag::note_template_param_list_different_arity;
-  }
-  S.Diag(New->getTemplateLoc(), NextDiag)
-    << (New->size() > Old->size())
-    << (Kind != Sema::TPL_TemplateMatch)
-    << SourceRange(New->getTemplateLoc(), New->getRAngleLoc());
+static void DiagnoseTemplateParameterListArityMismatch(
+    Sema &S, TemplateParameterList *New, TemplateParameterList *Old,
+    Sema::TemplateParameterListEqualKind Kind) {
+  S.Diag(New->getTemplateLoc(), diag::err_template_param_list_different_arity)
+      << (New->size() > Old->size()) << (Kind != Sema::TPL_TemplateMatch)
+      << SourceRange(New->getTemplateLoc(), New->getRAngleLoc());
   S.Diag(Old->getTemplateLoc(), diag::note_template_prev_declaration)
     << (Kind != Sema::TPL_TemplateMatch)
     << SourceRange(Old->getTemplateLoc(), Old->getRAngleLoc());
@@ -8350,11 +8281,10 @@ void DiagnoseTemplateParameterListArityMismatch(Sema &S,
 bool Sema::TemplateParameterListsAreEqual(
     const TemplateCompareNewDeclInfo &NewInstFrom, TemplateParameterList *New,
     const NamedDecl *OldInstFrom, TemplateParameterList *Old, bool Complain,
-    TemplateParameterListEqualKind Kind, SourceLocation TemplateArgLoc) {
+    TemplateParameterListEqualKind Kind) {
   if (Old->size() != New->size()) {
     if (Complain)
-      DiagnoseTemplateParameterListArityMismatch(*this, New, Old, Kind,
-                                                 TemplateArgLoc);
+      DiagnoseTemplateParameterListArityMismatch(*this, New, Old, Kind);
 
     return false;
   }
@@ -8372,21 +8302,18 @@ bool Sema::TemplateParameterListsAreEqual(
        OldParm != OldParmEnd; ++OldParm, ++NewParm) {
     if (NewParm == NewParmEnd) {
       if (Complain)
-        DiagnoseTemplateParameterListArityMismatch(*this, New, Old, Kind,
-                                                   TemplateArgLoc);
+        DiagnoseTemplateParameterListArityMismatch(*this, New, Old, Kind);
       return false;
     }
     if (!MatchTemplateParameterKind(*this, *NewParm, NewInstFrom, *OldParm,
-                                    OldInstFrom, Complain, Kind,
-                                    TemplateArgLoc))
+                                    OldInstFrom, Complain, Kind))
       return false;
   }
 
   // Make sure we exhausted all of the arguments.
   if (NewParm != NewParmEnd) {
     if (Complain)
-      DiagnoseTemplateParameterListArityMismatch(*this, New, Old, Kind,
-                                                 TemplateArgLoc);
+      DiagnoseTemplateParameterListArityMismatch(*this, New, Old, Kind);
 
     return false;
   }
@@ -8694,7 +8621,6 @@ static bool CheckNonTypeTemplatePartialSpecializationArgs(
       S.Diag(IsDefaultArgument ? TemplateNameLoc : ArgExpr->getBeginLoc(),
              diag::err_dependent_typed_non_type_arg_in_partial_spec)
           << Param->getType();
-      S.NoteTemplateParameterLocation(*Param);
       return true;
     }
   }
@@ -8712,12 +8638,14 @@ bool Sema::CheckTemplatePartialSpecializationArgs(
 
   TemplateParameterList *TemplateParams =
       PrimaryTemplate->getTemplateParameters();
+  CheckTemplateParameterRAII CTP(*this);
   for (unsigned I = 0, N = TemplateParams->size(); I != N; ++I) {
     NonTypeTemplateParmDecl *Param
       = dyn_cast<NonTypeTemplateParmDecl>(TemplateParams->getParam(I));
     if (!Param)
       continue;
 
+    CTP.setParam(Param);
     if (CheckNonTypeTemplatePartialSpecializationArgs(*this, TemplateNameLoc,
                                                       Param, &TemplateArgs[I],
                                                       1, I >= NumExplicit))
