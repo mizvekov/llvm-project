@@ -7504,6 +7504,7 @@ ExpectedStmt ASTNodeImporter::VisitDeclRefExpr(DeclRefExpr *E) {
   auto ToConvertedArgs = importChecked(Err, E->getConvertedArgs());
   auto ToLocation = importChecked(Err, E->getLocation());
   auto ToType = importChecked(Err, E->getType());
+  auto ToDeclType = importChecked(Err, E->getDeclType());
   if (Err)
     return std::move(Err);
 
@@ -7528,7 +7529,7 @@ ExpectedStmt ASTNodeImporter::VisitDeclRefExpr(DeclRefExpr *E) {
   auto *ToE = DeclRefExpr::Create(
       Importer.getToContext(), ToQualifierLoc, ToTemplateKeywordLoc, ToDecl,
       E->refersToEnclosingVariableOrCapture(), ToLocation, ToType,
-      E->getValueKind(), ToFoundD, ToResInfo, ToConvertedArgs,
+      E->getValueKind(), ToDeclType, ToFoundD, ToResInfo, ToConvertedArgs,
       E->isNonOdrUse());
   if (E->hadMultipleCandidates())
     ToE->setHadMultipleCandidates(true);
