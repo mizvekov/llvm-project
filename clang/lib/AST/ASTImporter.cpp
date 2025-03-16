@@ -8460,6 +8460,7 @@ ExpectedStmt ASTNodeImporter::VisitMemberExpr(MemberExpr *E) {
   auto ToDecl = importChecked(Err, E->getFoundDecl().getDecl());
   auto ToName = importChecked(Err, E->getMemberNameInfo().getName());
   auto ToLoc = importChecked(Err, E->getMemberNameInfo().getLoc());
+  auto ToDeclType = importChecked(Err, E->getDeclType());
   if (Err)
     return std::move(Err);
 
@@ -8481,7 +8482,7 @@ ExpectedStmt ASTNodeImporter::VisitMemberExpr(MemberExpr *E) {
                             ToOperatorLoc, ToQualifierLoc, ToTemplateKeywordLoc,
                             ToMemberDecl, ToFoundDecl, ToMemberNameInfo,
                             ResInfo, ToDeduced, ToType, E->getValueKind(),
-                            E->getObjectKind(), E->isNonOdrUse());
+                            ToDeclType, E->getObjectKind(), E->isNonOdrUse());
 }
 
 ExpectedStmt
