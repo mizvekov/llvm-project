@@ -1172,7 +1172,7 @@ DEF_TRAVERSE_TYPE(DependentNameType,
                   { TRY_TO(TraverseNestedNameSpecifier(T->getQualifier())); })
 
 DEF_TRAVERSE_TYPE(DependentTemplateSpecializationType, {
-  TRY_TO(TraverseNestedNameSpecifier(T->getQualifier()));
+  TRY_TO(TraverseTemplateName(T->getTemplateName()));
   TRY_TO(TraverseTemplateArguments(T->template_arguments()));
 })
 

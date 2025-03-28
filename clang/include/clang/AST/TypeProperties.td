@@ -777,18 +777,15 @@ let Class = DependentTemplateSpecializationType in {
   def : Property<"keyword", ElaboratedTypeKeyword> {
     let Read = [{ node->getKeyword() }];
   }
-  def : Property<"qualifier", NestedNameSpecifier> {
-    let Read = [{ node->getQualifier() }];
-  }
-  def : Property<"name", Identifier> {
-    let Read = [{ node->getIdentifier() }];
+  def : Property<"name", TemplateName> {
+    let Read = [{ node->getTemplateName() }];
   }
   def : Property<"templateArguments", Array<TemplateArgument>> {
     let Read = [{ node->template_arguments() }];
   }
 
   def : Creator<[{
-    return ctx.getDependentTemplateSpecializationType(keyword, qualifier,
+    return ctx.getDependentTemplateSpecializationType(keyword,
                                                       name, templateArguments);
   }]>;
 }
@@ -926,22 +923,10 @@ let Class = DependentNameType in {
   def : Property<"qualifier", NestedNameSpecifier> {
     let Read = [{ node->getQualifier() }];
   }
-  def : Property<"name", Identifier> {
-    let Read = [{ node->getIdentifier() }];
-  }
-  def : Property<"underlyingType", Optional<QualType>> {
-    let Read = [{
-      node->isCanonicalUnqualified()
-        ? std::nullopt
-        : std::optional<QualType>(node->getCanonicalTypeInternal())
-    }];
-  }
+  def : Property<"name", Identifier> { let Read = [{ node->getIdentifier() }]; }
 
   def : Creator<[{
-    QualType canon = (underlyingType
-                        ? ctx.getCanonicalType(*underlyingType)
-                        : QualType());
-    return ctx.getDependentNameType(keyword, qualifier, name, canon);
+    return ctx.getDependentNameType(keyword, qualifier, name);
   }]>;
 }
 

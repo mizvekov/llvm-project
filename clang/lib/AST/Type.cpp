@@ -3270,16 +3270,15 @@ StringRef TypeWithKeyword::getKeywordName(ElaboratedTypeKeyword Keyword) {
 }
 
 DependentTemplateSpecializationType::DependentTemplateSpecializationType(
-    ElaboratedTypeKeyword Keyword, NestedNameSpecifier *NNS,
-    const IdentifierInfo *Name, ArrayRef<TemplateArgument> Args, QualType Canon)
+    ElaboratedTypeKeyword Keyword, TemplateName Name,
+    ArrayRef<TemplateArgument> Args, QualType Canon)
     : TypeWithKeyword(Keyword, DependentTemplateSpecialization, Canon,
-                      TypeDependence::DependentInstantiation |
-                          (NNS ? toTypeDependence(NNS->getDependence())
-                               : TypeDependence::None)),
-      NNS(NNS), Name(Name) {
+
+                      toTypeDependence(Name.getDependence())),
+      Name(Name) {
   DependentTemplateSpecializationTypeBits.NumArgs = Args.size();
-  assert((!NNS || NNS->isDependent()) &&
-         "DependentTemplateSpecializatonType requires dependent qualifier");
+  assert(Name.getAsDependentTemplateName() &&
+         "DependentTemplateSpecializatonType requires dependent template name");
   auto *ArgBuffer = const_cast<TemplateArgument *>(template_arguments().data());
   for (const TemplateArgument &Arg : Args) {
     addDependence(toTypeDependence(Arg.getDependence() &
@@ -3289,16 +3288,12 @@ DependentTemplateSpecializationType::DependentTemplateSpecializationType(
   }
 }
 
-void
-DependentTemplateSpecializationType::Profile(llvm::FoldingSetNodeID &ID,
-                                             const ASTContext &Context,
-                                             ElaboratedTypeKeyword Keyword,
-                                             NestedNameSpecifier *Qualifier,
-                                             const IdentifierInfo *Name,
-                                             ArrayRef<TemplateArgument> Args) {
+void DependentTemplateSpecializationType::Profile(
+    llvm::FoldingSetNodeID &ID, const ASTContext &Context,
+    ElaboratedTypeKeyword Keyword, TemplateName Name,
+    ArrayRef<TemplateArgument> Args) {
   ID.AddInteger(llvm::to_underlying(Keyword));
-  ID.AddPointer(Qualifier);
-  ID.AddPointer(Name);
+  ID.AddPointer(Name.getAsVoidPointer());
   for (const TemplateArgument &Arg : Args)
     Arg.Profile(ID, Context);
 }

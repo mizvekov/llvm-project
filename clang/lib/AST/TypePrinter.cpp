@@ -1793,9 +1793,7 @@ void TypePrinter::printDependentTemplateSpecializationBefore(
   if (T->getKeyword() != ElaboratedTypeKeyword::None)
     OS << " ";
 
-  if (T->getQualifier())
-    T->getQualifier()->print(OS, Policy);
-  OS << "template " << T->getIdentifier()->getName();
+  T->getTemplateName().print(OS, Policy);
   printTemplateArgumentList(OS, T->template_arguments(), Policy);
   spaceBeforePlaceHolder(OS);
 }

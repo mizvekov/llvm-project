@@ -1707,11 +1707,9 @@ ASTNodeImporter::VisitPackExpansionType(const PackExpansionType *T) {
 
 ExpectedType ASTNodeImporter::VisitDependentTemplateSpecializationType(
     const DependentTemplateSpecializationType *T) {
-  auto ToQualifierOrErr = import(T->getQualifier());
-  if (!ToQualifierOrErr)
-    return ToQualifierOrErr.takeError();
-
-  IdentifierInfo *ToName = Importer.Import(T->getIdentifier());
+  auto ToNameOrErr = import(T->getTemplateName());
+  if (!ToNameOrErr)
+    return ToNameOrErr.takeError();
 
   SmallVector<TemplateArgument, 2> ToPack;
   ToPack.reserve(T->template_arguments().size());
@@ -1719,7 +1717,7 @@ ExpectedType ASTNodeImporter::VisitDependentTemplateSpecializationType(
     return std::move(Err);
 
   return Importer.getToContext().getDependentTemplateSpecializationType(
-      T->getKeyword(), *ToQualifierOrErr, ToName, ToPack);
+      T->getKeyword(), *ToNameOrErr, ToPack);
 }
 
 ExpectedType
@@ -1729,18 +1727,8 @@ ASTNodeImporter::VisitDependentNameType(const DependentNameType *T) {
     return ToQualifierOrErr.takeError();
 
   IdentifierInfo *Name = Importer.Import(T->getIdentifier());
-
-  QualType Canon;
-  if (T != T->getCanonicalTypeInternal().getTypePtr()) {
-    if (ExpectedType TyOrErr = import(T->getCanonicalTypeInternal()))
-      Canon = (*TyOrErr).getCanonicalType();
-    else
-      return TyOrErr.takeError();
-  }
-
   return Importer.getToContext().getDependentNameType(T->getKeyword(),
-                                                      *ToQualifierOrErr,
-                                                      Name, Canon);
+                                                      *ToQualifierOrErr, Name);
 }
 
 ExpectedType

@@ -1837,15 +1837,15 @@ public:
                              TagDecl *OwnedTagDecl = nullptr) const;
   QualType getDependentNameType(ElaboratedTypeKeyword Keyword,
                                 NestedNameSpecifier *NNS,
-                                const IdentifierInfo *Name,
-                                QualType Canon = QualType()) const;
+                                const IdentifierInfo *Name) const;
 
   QualType getDependentTemplateSpecializationType(
-      ElaboratedTypeKeyword Keyword, NestedNameSpecifier *NNS,
-      const IdentifierInfo *Name, ArrayRef<TemplateArgumentLoc> Args) const;
-  QualType getDependentTemplateSpecializationType(
-      ElaboratedTypeKeyword Keyword, NestedNameSpecifier *NNS,
-      const IdentifierInfo *Name, ArrayRef<TemplateArgument> Args) const;
+      ElaboratedTypeKeyword Keyword, TemplateName Name,
+      ArrayRef<TemplateArgumentLoc> Args) const;
+  QualType
+  getDependentTemplateSpecializationType(ElaboratedTypeKeyword Keyword,
+                                         TemplateName Name,
+                                         ArrayRef<TemplateArgument> Args) const;
 
   TemplateArgument getInjectedTemplateArg(NamedDecl *ParamDecl) const;
 

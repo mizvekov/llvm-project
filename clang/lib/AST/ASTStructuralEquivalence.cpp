@@ -1315,11 +1315,10 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   case Type::DependentTemplateSpecialization: {
     const auto *Spec1 = cast<DependentTemplateSpecializationType>(T1);
     const auto *Spec2 = cast<DependentTemplateSpecializationType>(T2);
-    if (!IsStructurallyEquivalent(Context, Spec1->getQualifier(),
-                                  Spec2->getQualifier()))
+    if (Spec1->getKeyword() != Spec2->getKeyword())
       return false;
-    if (!IsStructurallyEquivalent(Spec1->getIdentifier(),
-                                  Spec2->getIdentifier()))
+    if (!IsStructurallyEquivalent(Context, Spec1->getTemplateName(),
+                                  Spec2->getTemplateName()))
       return false;
     if (!IsStructurallyEquivalent(Context, Spec1->template_arguments(),
                                   Spec2->template_arguments()))

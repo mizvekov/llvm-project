@@ -223,8 +223,13 @@ NestedNameSpecifierDependence NestedNameSpecifier::getDependence() const {
   }
 
   case TypeSpec:
-  case TypeSpecWithTemplate:
-    return toNestedNameSpecifierDependendence(getAsType()->getDependence());
+  case TypeSpecWithTemplate: {
+    NestedNameSpecifierDependence Dep =
+        toNestedNameSpecifierDependendence(getAsType()->getDependence());
+    if (NestedNameSpecifier *Prefix = getPrefix())
+      Dep |= Prefix->getDependence();
+    return Dep;
+  }
   }
   llvm_unreachable("Invalid NNS Kind!");
 }
@@ -261,10 +266,11 @@ NestedNameSpecifier::translateToType(const ASTContext &Context) const {
     case Type::DependentTemplateSpecialization: {
       const auto *DT = cast<DependentTemplateSpecializationType>(T);
       // FIXME: The type node can't represent the template keyword.
+      TemplateName Name = Context.getDependentTemplateName(
+          Prefix, DT->getDependentTemplateName().getIdentifier());
       return Context
-          .getDependentTemplateSpecializationType(ElaboratedTypeKeyword::None,
-                                                  Prefix, DT->getIdentifier(),
-                                                  DT->template_arguments())
+          .getDependentTemplateSpecializationType(
+              ElaboratedTypeKeyword::None, Name, DT->template_arguments())
           .getTypePtr();
     }
     case Type::Record:
@@ -369,7 +375,7 @@ void NestedNameSpecifier::print(raw_ostream &OS, const PrintingPolicy &Policy,
                    dyn_cast<DependentTemplateSpecializationType>(T)) {
       // Print the template name without its corresponding
       // nested-name-specifier.
-      OS << DepSpecType->getIdentifier()->getName();
+      OS << DepSpecType->getDependentTemplateName().getIdentifier()->getName();
       // Print the template argument list.
       printTemplateArgumentList(OS, DepSpecType->template_arguments(),
                                 InnerPolicy);

@@ -313,7 +313,8 @@ TemplateNameDependence TemplateName::getDependence() const {
   case NameKind::DependentTemplate: {
     DependentTemplateName *S = getAsDependentTemplateName();
     auto D = TemplateNameDependence::DependentInstantiation;
-    D |= toTemplateNameDependence(S->getQualifier()->getDependence());
+    if (NestedNameSpecifier *Qualifier = S->getQualifier())
+      D |= toTemplateNameDependence(Qualifier->getDependence());
     return D;
   }
   case NameKind::SubstTemplateTemplateParm: {

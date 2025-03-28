@@ -5739,24 +5739,26 @@ ASTContext::getMacroQualifiedType(QualType UnderlyingTy,
 
 QualType ASTContext::getDependentNameType(ElaboratedTypeKeyword Keyword,
                                           NestedNameSpecifier *NNS,
-                                          const IdentifierInfo *Name,
-                                          QualType Canon) const {
-  if (Canon.isNull()) {
-    NestedNameSpecifier *CanonNNS = getCanonicalNestedNameSpecifier(NNS);
-    if (CanonNNS != NNS)
-      Canon = getDependentNameType(Keyword, CanonNNS, Name);
-  }
-
+                                          const IdentifierInfo *Name) const {
   llvm::FoldingSetNodeID ID;
   DependentNameType::Profile(ID, Keyword, NNS, Name);
 
   void *InsertPos = nullptr;
-  DependentNameType *T
-    = DependentNameTypes.FindNodeOrInsertPos(ID, InsertPos);
-  if (T)
+  if (DependentNameType *T =
+          DependentNameTypes.FindNodeOrInsertPos(ID, InsertPos))
     return QualType(T, 0);
 
-  T = new (*this, alignof(DependentNameType))
+  QualType Canon;
+  if (NestedNameSpecifier *CanonNNS = getCanonicalNestedNameSpecifier(NNS);
+      CanonNNS != NNS) {
+    Canon = getDependentNameType(Keyword, CanonNNS, Name);
+    [[maybe_unused]] DependentNameType *T =
+        DependentNameTypes.FindNodeOrInsertPos(ID, InsertPos);
+    assert(!T && "broken canonicalization");
+    assert(Canon.isCanonical());
+  }
+
+  DependentNameType *T = new (*this, alignof(DependentNameType))
       DependentNameType(Keyword, NNS, Name, Canon);
   Types.push_back(T);
   DependentNameTypes.InsertNode(T, InsertPos);
@@ -5764,27 +5766,20 @@ QualType ASTContext::getDependentNameType(ElaboratedTypeKeyword Keyword,
 }
 
 QualType ASTContext::getDependentTemplateSpecializationType(
-    ElaboratedTypeKeyword Keyword, NestedNameSpecifier *NNS,
-    const IdentifierInfo *Name, ArrayRef<TemplateArgumentLoc> Args) const {
+    ElaboratedTypeKeyword Keyword, TemplateName Name,
+    ArrayRef<TemplateArgumentLoc> Args) const {
   // TODO: avoid this copy
   SmallVector<TemplateArgument, 16> ArgCopy;
   for (unsigned I = 0, E = Args.size(); I != E; ++I)
     ArgCopy.push_back(Args[I].getArgument());
-  return getDependentTemplateSpecializationType(Keyword, NNS, Name, ArgCopy);
+  return getDependentTemplateSpecializationType(Keyword, Name, ArgCopy);
 }
 
-QualType
-ASTContext::getDependentTemplateSpecializationType(
-                                 ElaboratedTypeKeyword Keyword,
-                                 NestedNameSpecifier *NNS,
-                                 const IdentifierInfo *Name,
-                                 ArrayRef<TemplateArgument> Args) const {
-  assert((!NNS || NNS->isDependent()) &&
-         "nested-name-specifier must be dependent");
-
+QualType ASTContext::getDependentTemplateSpecializationType(
+    ElaboratedTypeKeyword Keyword, TemplateName Name,
+    ArrayRef<TemplateArgument> Args) const {
   llvm::FoldingSetNodeID ID;
-  DependentTemplateSpecializationType::Profile(ID, *this, Keyword, NNS,
-                                               Name, Args);
+  DependentTemplateSpecializationType::Profile(ID, *this, Keyword, Name, Args);
 
   void *InsertPos = nullptr;
   DependentTemplateSpecializationType *T
@@ -5792,7 +5787,7 @@ ASTContext::getDependentTemplateSpecializationType(
   if (T)
     return QualType(T, 0);
 
-  NestedNameSpecifier *CanonNNS = getCanonicalNestedNameSpecifier(NNS);
+  TemplateName CanonName = getCanonicalTemplateName(Name);
 
   ElaboratedTypeKeyword CanonKeyword = Keyword;
   if (Keyword == ElaboratedTypeKeyword::None)
@@ -5803,9 +5798,8 @@ ASTContext::getDependentTemplateSpecializationType(
       ::getCanonicalTemplateArguments(*this, Args, AnyNonCanonArgs);
 
   QualType Canon;
-  if (AnyNonCanonArgs || CanonNNS != NNS || CanonKeyword != Keyword) {
-    Canon = getDependentTemplateSpecializationType(CanonKeyword, CanonNNS,
-                                                   Name,
+  if (AnyNonCanonArgs || CanonName != Name || CanonKeyword != Keyword) {
+    Canon = getDependentTemplateSpecializationType(CanonKeyword, CanonName,
                                                    CanonArgs);
 
     // Find the insert position again.
@@ -5817,8 +5811,7 @@ ASTContext::getDependentTemplateSpecializationType(
   void *Mem = Allocate((sizeof(DependentTemplateSpecializationType) +
                         sizeof(TemplateArgument) * Args.size()),
                        alignof(DependentTemplateSpecializationType));
-  T = new (Mem) DependentTemplateSpecializationType(Keyword, NNS,
-                                                    Name, Args, Canon);
+  T = new (Mem) DependentTemplateSpecializationType(Keyword, Name, Args, Canon);
   Types.push_back(T);
   DependentTemplateSpecializationTypes.InsertNode(T, InsertPos);
   return QualType(T, 0);
@@ -7622,8 +7615,19 @@ ASTContext::getCanonicalNestedNameSpecifier(NestedNameSpecifier *NNS) const {
     if (const auto *DNT = T->getAs<DependentNameType>())
       return NestedNameSpecifier::Create(*this, DNT->getQualifier(),
                                          DNT->getIdentifier());
-    if (const auto *DTST = T->getAs<DependentTemplateSpecializationType>())
-      return NestedNameSpecifier::Create(*this, DTST->getQualifier(), true, T);
+    if (const auto *DTST = T->getAs<DependentTemplateSpecializationType>()) {
+      const DependentTemplateName &DTN = DTST->getDependentTemplateName();
+      TemplateName Name =
+          getDependentTemplateName(/*NNS=*/nullptr, DTN.getIdentifier());
+      QualType NewT = getDependentTemplateSpecializationType(
+          ElaboratedTypeKeyword::Typename, Name, DTST->template_arguments());
+      assert(NewT.isCanonical());
+      NestedNameSpecifier *Prefix = DTN.getQualifier();
+      if (!Prefix)
+        Prefix = getCanonicalNestedNameSpecifier(NNS->getPrefix());
+      return NestedNameSpecifier::Create(*this, Prefix, true,
+                                         NewT.getTypePtr());
+    }
 
     // TODO: Set 'Template' parameter to true for other template types.
     return NestedNameSpecifier::Create(*this, nullptr, false, T);
@@ -13575,7 +13579,6 @@ static NestedNameSpecifier *getCommonNNS(ASTContext &Ctx,
     // TODO: Try to salvage the original prefix.
     // If getCommonSugaredType removed any top level sugar, the original prefix
     // is not applicable anymore.
-    NestedNameSpecifier *P = nullptr;
     const Type *T = Ctx.getCommonSugaredType(QualType(T1, 0), QualType(T2, 0),
                                              /*Unqualified=*/true)
                         .getTypePtr();
@@ -13600,16 +13603,17 @@ static NestedNameSpecifier *getCommonNNS(ASTContext &Ctx,
       // A DependentTemplateSpecializationType loses it's Qualifier, which
       // is turned into the prefix.
       auto *DTST = cast<DependentTemplateSpecializationType>(T);
-      T = Ctx.getDependentTemplateSpecializationType(
-                 DTST->getKeyword(), /*NNS=*/nullptr, DTST->getIdentifier(),
-                 DTST->template_arguments())
+      const DependentTemplateName &DTN = DTST->getDependentTemplateName();
+      TemplateName Name =
+          Ctx.getDependentTemplateName(/*NNS=*/nullptr, DTN.getIdentifier());
+      T = Ctx.getDependentTemplateSpecializationType(DTST->getKeyword(), Name,
+                                                     DTST->template_arguments())
               .getTypePtr();
-      P = DTST->getQualifier();
-      R = NestedNameSpecifier::Create(Ctx, DTST->getQualifier(), Template, T);
+      R = NestedNameSpecifier::Create(Ctx, DTN.getQualifier(), Template, T);
       break;
     }
     default:
-      R = NestedNameSpecifier::Create(Ctx, P, Template, T);
+      R = NestedNameSpecifier::Create(Ctx, /*Prefix=*/nullptr, Template, T);
       break;
     }
     break;
@@ -14052,18 +14056,17 @@ static QualType getCommonNonSugarTypeNode(ASTContext &Ctx, const Type *X,
     assert(NX->getIdentifier() == NY->getIdentifier());
     return Ctx.getDependentNameType(
         getCommonTypeKeyword(NX, NY),
-        getCommonQualifier(Ctx, NX, NY, /*IsSame=*/true), NX->getIdentifier(),
-        NX->getCanonicalTypeInternal());
+        getCommonQualifier(Ctx, NX, NY, /*IsSame=*/true), NX->getIdentifier());
   }
   case Type::DependentTemplateSpecialization: {
     const auto *TX = cast<DependentTemplateSpecializationType>(X),
                *TY = cast<DependentTemplateSpecializationType>(Y);
-    assert(TX->getIdentifier() == TY->getIdentifier());
     auto As = getCommonTemplateArguments(Ctx, TX->template_arguments(),
                                          TY->template_arguments());
     return Ctx.getDependentTemplateSpecializationType(
         getCommonTypeKeyword(TX, TY),
-        getCommonQualifier(Ctx, TX, TY, /*IsSame=*/true), TX->getIdentifier(),
+        getCommonTemplateName(Ctx, TX->getTemplateName(),
+                              TY->getTemplateName()),
         As);
   }
   case Type::UnaryTransform: {

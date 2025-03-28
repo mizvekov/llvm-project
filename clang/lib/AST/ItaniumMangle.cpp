@@ -1326,8 +1326,7 @@ void CXXNameMangler::manglePrefix(QualType type) {
   } else if (const auto *DTST =
                  type->getAs<DependentTemplateSpecializationType>()) {
     if (!mangleSubstitution(QualType(DTST, 0))) {
-      TemplateName Template = getASTContext().getDependentTemplateName(
-          DTST->getQualifier(), DTST->getIdentifier());
+      TemplateName Template = DTST->getTemplateName();
       mangleTemplatePrefix(Template);
 
       // FIXME: GCC does not appear to mangle the template arguments when
@@ -2182,6 +2181,16 @@ void CXXNameMangler::manglePrefix(NestedNameSpecifier *qualifier) {
 
   case NestedNameSpecifier::TypeSpec:
   case NestedNameSpecifier::TypeSpecWithTemplate:
+    if (NestedNameSpecifier *Prefix = qualifier->getPrefix()) {
+      const auto *DTST =
+          cast<DependentTemplateSpecializationType>(qualifier->getAsType());
+      TemplateName Name = getASTContext().getDependentTemplateName(
+          Prefix, DTST->getDependentTemplateName().getIdentifier());
+      QualType NewT = getASTContext().getDependentTemplateSpecializationType(
+          DTST->getKeyword(), Name, DTST->template_arguments());
+      manglePrefix(NewT);
+      return;
+    }
     manglePrefix(QualType(qualifier->getAsType(), 0));
     return;
 
@@ -2571,9 +2580,8 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
   case Type::DependentTemplateSpecialization: {
     const DependentTemplateSpecializationType *DTST =
         cast<DependentTemplateSpecializationType>(Ty);
-    TemplateName Template = getASTContext().getDependentTemplateName(
-        DTST->getQualifier(), DTST->getIdentifier());
-    mangleSourceName(DTST->getIdentifier());
+    TemplateName Template = DTST->getTemplateName();
+    mangleTemplatePrefix(Template);
     mangleTemplateArgs(Template, DTST->template_arguments());
     break;
   }
@@ -4481,10 +4489,7 @@ void CXXNameMangler::mangleType(const DependentTemplateSpecializationType *T) {
   // Dependently-scoped template types are nested if they have a prefix.
   Out << 'N';
 
-  // TODO: avoid making this TemplateName.
-  TemplateName Prefix =
-    getASTContext().getDependentTemplateName(T->getQualifier(),
-                                             T->getIdentifier());
+  TemplateName Prefix = T->getTemplateName();
   mangleTemplatePrefix(Prefix);
 
   // FIXME: GCC does not appear to mangle the template arguments when

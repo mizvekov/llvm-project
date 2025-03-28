@@ -153,10 +153,19 @@ void ODRHash::AddTemplateName(TemplateName Name) {
     AddTemplateName(QTN->getUnderlyingTemplate());
     break;
   }
+  case TemplateName::DependentTemplate: {
+    DependentTemplateName *DTN = Name.getAsDependentTemplateName();
+    if (DTN->isIdentifier())
+      AddIdentifierInfo(DTN->getIdentifier());
+    else
+      ID.AddInteger(DTN->getOperator());
+    if (NestedNameSpecifier *NNS = DTN->getQualifier())
+      AddNestedNameSpecifier(NNS);
+    break;
+  }
   // TODO: Support these cases.
   case TemplateName::OverloadedTemplate:
   case TemplateName::AssumedTemplate:
-  case TemplateName::DependentTemplate:
   case TemplateName::SubstTemplateTemplateParm:
   case TemplateName::SubstTemplateTemplateParmPack:
   case TemplateName::UsingTemplate:
@@ -1221,8 +1230,7 @@ public:
 
   void VisitDependentTemplateSpecializationType(
       const DependentTemplateSpecializationType *T) {
-    AddIdentifierInfo(T->getIdentifier());
-    AddNestedNameSpecifier(T->getQualifier());
+    Hash.AddTemplateName(T->getTemplateName());
     ID.AddInteger(T->template_arguments().size());
     for (const auto &TA : T->template_arguments()) {
       Hash.AddTemplateArgument(TA);
