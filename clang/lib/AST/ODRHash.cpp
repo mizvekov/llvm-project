@@ -128,7 +128,6 @@ void ODRHash::AddNestedNameSpecifier(const NestedNameSpecifier *NNS) {
     AddDecl(NNS->getAsNamespaceAlias());
     break;
   case NestedNameSpecifier::TypeSpec:
-  case NestedNameSpecifier::TypeSpecWithTemplate:
     AddType(NNS->getAsType());
     break;
   case NestedNameSpecifier::Global:
@@ -155,10 +154,11 @@ void ODRHash::AddTemplateName(TemplateName Name) {
   }
   case TemplateName::DependentTemplate: {
     DependentTemplateName *DTN = Name.getAsDependentTemplateName();
-    if (DTN->isIdentifier())
-      AddIdentifierInfo(DTN->getIdentifier());
+    if (IdentifierOrOverloadedOperator IO = DTN->getName();
+        const IdentifierInfo *II = IO.getIdentifier())
+      AddIdentifierInfo(II);
     else
-      ID.AddInteger(DTN->getOperator());
+      ID.AddInteger(IO.getOperator());
     if (NestedNameSpecifier *NNS = DTN->getQualifier())
       AddNestedNameSpecifier(NNS);
     break;

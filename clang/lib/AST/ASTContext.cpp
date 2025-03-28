@@ -4033,7 +4033,6 @@ QualType ASTContext::getMemberPointerType(QualType T,
   if (!Qualifier) {
     assert(Cls && "At least one of Qualifier or Cls must be provided");
     Qualifier = NestedNameSpecifier::Create(*this, /*Prefix=*/nullptr,
-                                            /*Template=*/false,
                                             getTypeDeclType(Cls).getTypePtr());
   } else if (!Cls) {
     Cls = Qualifier->getAsRecordDecl();
@@ -4052,8 +4051,7 @@ QualType ASTContext::getMemberPointerType(QualType T,
     if (!Cls)
       return getCanonicalNestedNameSpecifier(Qualifier);
     NestedNameSpecifier *R = NestedNameSpecifier::Create(
-        *this, /*Prefix=*/nullptr, /*Template=*/false,
-        Cls->getCanonicalDecl()->getTypeForDecl());
+        *this, /*Prefix=*/nullptr, Cls->getCanonicalDecl()->getTypeForDecl());
     assert(R == getCanonicalNestedNameSpecifier(R));
     return R;
   }();
@@ -6909,12 +6907,13 @@ ASTContext::getNameForTemplate(TemplateName Name,
 
   case TemplateName::DependentTemplate: {
     DependentTemplateName *DTN = Name.getAsDependentTemplateName();
+    IdentifierOrOverloadedOperator TN = DTN->getName();
     DeclarationName DName;
-    if (DTN->isIdentifier()) {
-      DName = DeclarationNames.getIdentifier(DTN->getIdentifier());
+    if (const IdentifierInfo *II = TN.getIdentifier()) {
+      DName = DeclarationNames.getIdentifier(II);
       return DeclarationNameInfo(DName, NameLoc);
     } else {
-      DName = DeclarationNames.getCXXOperatorName(DTN->getOperator());
+      DName = DeclarationNames.getCXXOperatorName(TN.getOperator());
       // DNInfo work in progress: FIXME: source locations?
       DeclarationNameLoc DNLoc =
           DeclarationNameLoc::makeCXXOperatorNameLoc(SourceRange());
@@ -6989,7 +6988,13 @@ TemplateName ASTContext::getCanonicalTemplateName(TemplateName Name,
   case TemplateName::DependentTemplate: {
     DependentTemplateName *DTN = Name.getAsDependentTemplateName();
     assert(DTN && "Non-dependent template names must refer to template decls.");
-    return DTN->CanonicalTemplateName;
+    NestedNameSpecifier *Qualifier = DTN->getQualifier();
+    NestedNameSpecifier *CanonQualifier =
+        getCanonicalNestedNameSpecifier(Qualifier);
+    if (Qualifier != CanonQualifier || !DTN->hasTemplateKeyword())
+      return getDependentTemplateName(CanonQualifier, DTN->getName(),
+                                      /*HasTemplateKeyword=*/true);
+    return Name;
   }
 
   case TemplateName::SubstTemplateTemplateParmPack: {
@@ -7222,7 +7227,6 @@ static bool isSameQualifier(const NestedNameSpecifier *X,
     // We've already checked that we named the same namespace.
     break;
   case NestedNameSpecifier::TypeSpec:
-  case NestedNameSpecifier::TypeSpecWithTemplate:
     if (X->getAsType()->getCanonicalTypeInternal() !=
         Y->getAsType()->getCanonicalTypeInternal())
       return false;
@@ -7601,8 +7605,7 @@ ASTContext::getCanonicalNestedNameSpecifier(NestedNameSpecifier *NNS) const {
 
   // The difference between TypeSpec and TypeSpecWithTemplate is that the
   // latter will have the 'template' keyword when printed.
-  case NestedNameSpecifier::TypeSpec:
-  case NestedNameSpecifier::TypeSpecWithTemplate: {
+  case NestedNameSpecifier::TypeSpec: {
     const Type *T = getCanonicalType(NNS->getAsType());
 
     // If we have some kind of dependent-named type (e.g., "typename T::type"),
@@ -7617,20 +7620,17 @@ ASTContext::getCanonicalNestedNameSpecifier(NestedNameSpecifier *NNS) const {
                                          DNT->getIdentifier());
     if (const auto *DTST = T->getAs<DependentTemplateSpecializationType>()) {
       const DependentTemplateName &DTN = DTST->getDependentTemplateName();
-      TemplateName Name =
-          getDependentTemplateName(/*NNS=*/nullptr, DTN.getIdentifier());
+      TemplateName Name = getDependentTemplateName(
+          /*NNS=*/nullptr, DTN.getName(), /*HasTemplateKeyword=*/true);
       QualType NewT = getDependentTemplateSpecializationType(
           ElaboratedTypeKeyword::Typename, Name, DTST->template_arguments());
       assert(NewT.isCanonical());
       NestedNameSpecifier *Prefix = DTN.getQualifier();
       if (!Prefix)
         Prefix = getCanonicalNestedNameSpecifier(NNS->getPrefix());
-      return NestedNameSpecifier::Create(*this, Prefix, true,
-                                         NewT.getTypePtr());
+      return NestedNameSpecifier::Create(*this, Prefix, NewT.getTypePtr());
     }
-
-    // TODO: Set 'Template' parameter to true for other template types.
-    return NestedNameSpecifier::Create(*this, nullptr, false, T);
+    return NestedNameSpecifier::Create(*this, nullptr, T);
   }
 
   case NestedNameSpecifier::Global:
@@ -10061,74 +10061,24 @@ TemplateName ASTContext::getQualifiedTemplateName(NestedNameSpecifier *NNS,
 }
 
 /// Retrieve the template name that represents a dependent
-/// template name such as \c MetaFun::template apply.
-TemplateName
-ASTContext::getDependentTemplateName(NestedNameSpecifier *NNS,
-                                     const IdentifierInfo *Name) const {
-  assert((!NNS || NNS->isDependent()) &&
-         "Nested name specifier must be dependent");
-
-  llvm::FoldingSetNodeID ID;
-  DependentTemplateName::Profile(ID, NNS, Name);
-
-  void *InsertPos = nullptr;
-  DependentTemplateName *QTN =
-    DependentTemplateNames.FindNodeOrInsertPos(ID, InsertPos);
-
-  if (QTN)
-    return TemplateName(QTN);
-
-  NestedNameSpecifier *CanonNNS = getCanonicalNestedNameSpecifier(NNS);
-  if (CanonNNS == NNS) {
-    QTN = new (*this, alignof(DependentTemplateName))
-        DependentTemplateName(NNS, Name);
-  } else {
-    TemplateName Canon = getDependentTemplateName(CanonNNS, Name);
-    QTN = new (*this, alignof(DependentTemplateName))
-        DependentTemplateName(NNS, Name, Canon);
-    DependentTemplateName *CheckQTN =
-      DependentTemplateNames.FindNodeOrInsertPos(ID, InsertPos);
-    assert(!CheckQTN && "Dependent type name canonicalization broken");
-    (void)CheckQTN;
-  }
-
-  DependentTemplateNames.InsertNode(QTN, InsertPos);
-  return TemplateName(QTN);
-}
-
-/// Retrieve the template name that represents a dependent
 /// template name such as \c MetaFun::template operator+.
 TemplateName
 ASTContext::getDependentTemplateName(NestedNameSpecifier *NNS,
-                                     OverloadedOperatorKind Operator) const {
+                                     IdentifierOrOverloadedOperator Name,
+                                     bool HasTemplateKeyword) const {
   assert((!NNS || NNS->isDependent()) &&
          "Nested name specifier must be dependent");
 
   llvm::FoldingSetNodeID ID;
-  DependentTemplateName::Profile(ID, NNS, Operator);
+  DependentTemplateName::Profile(ID, NNS, Name, HasTemplateKeyword);
 
   void *InsertPos = nullptr;
-  DependentTemplateName *QTN
-    = DependentTemplateNames.FindNodeOrInsertPos(ID, InsertPos);
-
-  if (QTN)
+  if (DependentTemplateName *QTN =
+          DependentTemplateNames.FindNodeOrInsertPos(ID, InsertPos))
     return TemplateName(QTN);
 
-  NestedNameSpecifier *CanonNNS = getCanonicalNestedNameSpecifier(NNS);
-  if (CanonNNS == NNS) {
-    QTN = new (*this, alignof(DependentTemplateName))
-        DependentTemplateName(NNS, Operator);
-  } else {
-    TemplateName Canon = getDependentTemplateName(CanonNNS, Operator);
-    QTN = new (*this, alignof(DependentTemplateName))
-        DependentTemplateName(NNS, Operator, Canon);
-
-    DependentTemplateName *CheckQTN
-      = DependentTemplateNames.FindNodeOrInsertPos(ID, InsertPos);
-    assert(!CheckQTN && "Dependent template name canonicalization broken");
-    (void)CheckQTN;
-  }
-
+  DependentTemplateName *QTN = new (*this, alignof(DependentTemplateName))
+      DependentTemplateName(NNS, Name, HasTemplateKeyword);
   DependentTemplateNames.InsertNode(QTN, InsertPos);
   return TemplateName(QTN);
 }
@@ -13547,19 +13497,12 @@ static NestedNameSpecifier *getCommonNNS(ASTContext &Ctx,
     R = NestedNameSpecifier::Create(Ctx, P, ::getCommonDeclChecked(N1, N2));
     break;
   }
-  case NestedNameSpecifier::SpecifierKind::TypeSpec:
-  case NestedNameSpecifier::SpecifierKind::TypeSpecWithTemplate: {
+  case NestedNameSpecifier::SpecifierKind::TypeSpec: {
     // FIXME: See comment below, on Super case.
     if (K2 == NestedNameSpecifier::SpecifierKind::Super)
       return Ctx.getCanonicalNestedNameSpecifier(NNS1);
 
-    assert(K2 == NestedNameSpecifier::SpecifierKind::TypeSpec ||
-           K2 == NestedNameSpecifier::SpecifierKind::TypeSpecWithTemplate);
-
-    // Only keep the template keyword if both sides have it.
-    bool Template =
-        K1 == NestedNameSpecifier::SpecifierKind::TypeSpecWithTemplate &&
-        K2 == NestedNameSpecifier::SpecifierKind::TypeSpecWithTemplate;
+    assert(K2 == NestedNameSpecifier::SpecifierKind::TypeSpec);
 
     const Type *T1 = NNS1->getAsType(), *T2 = NNS2->getAsType();
     if (T1 == T2) {
@@ -13573,7 +13516,7 @@ static NestedNameSpecifier *getCommonNNS(ASTContext &Ctx,
       bool IsSame = isa<DependentTemplateSpecializationType>(T1);
       NestedNameSpecifier *P =
           ::getCommonNNS(Ctx, NNS1->getPrefix(), NNS2->getPrefix(), IsSame);
-      R = NestedNameSpecifier::Create(Ctx, P, Template, T1);
+      R = NestedNameSpecifier::Create(Ctx, P, T1);
       break;
     }
     // TODO: Try to salvage the original prefix.
@@ -13588,7 +13531,7 @@ static NestedNameSpecifier *getCommonNNS(ASTContext &Ctx,
     case Type::Elaborated: {
       // An ElaboratedType is stripped off, it's Qualifier becomes the prefix.
       auto *ET = cast<ElaboratedType>(T);
-      R = NestedNameSpecifier::Create(Ctx, ET->getQualifier(), Template,
+      R = NestedNameSpecifier::Create(Ctx, ET->getQualifier(),
                                       ET->getNamedType().getTypePtr());
       break;
     }
@@ -13604,16 +13547,16 @@ static NestedNameSpecifier *getCommonNNS(ASTContext &Ctx,
       // is turned into the prefix.
       auto *DTST = cast<DependentTemplateSpecializationType>(T);
       const DependentTemplateName &DTN = DTST->getDependentTemplateName();
-      TemplateName Name =
-          Ctx.getDependentTemplateName(/*NNS=*/nullptr, DTN.getIdentifier());
+      TemplateName Name = Ctx.getDependentTemplateName(
+          /*NNS=*/nullptr, DTN.getName(), DTN.hasTemplateKeyword());
       T = Ctx.getDependentTemplateSpecializationType(DTST->getKeyword(), Name,
                                                      DTST->template_arguments())
               .getTypePtr();
-      R = NestedNameSpecifier::Create(Ctx, DTN.getQualifier(), Template, T);
+      R = NestedNameSpecifier::Create(Ctx, DTN.getQualifier(), T);
       break;
     }
     default:
-      R = NestedNameSpecifier::Create(Ctx, /*Prefix=*/nullptr, Template, T);
+      R = NestedNameSpecifier::Create(Ctx, /*Prefix=*/nullptr, T);
       break;
     }
     break;

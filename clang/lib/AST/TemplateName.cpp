@@ -122,6 +122,31 @@ void SubstTemplateTemplateParmPackStorage::Profile(
   ID.AddBoolean(Final);
 }
 
+IdentifierOrOverloadedOperator::IdentifierOrOverloadedOperator(
+    const IdentifierInfo *II)
+    : PtrOrOp(reinterpret_cast<uintptr_t>(II)) {
+  static_assert(NUM_OVERLOADED_OPERATORS <= 4096,
+                "NUM_OVERLOADED_OPERATORS is too large");
+  assert(II);
+  assert(getIdentifier() == II);
+}
+IdentifierOrOverloadedOperator::IdentifierOrOverloadedOperator(
+    OverloadedOperatorKind OOK)
+    : PtrOrOp(-uintptr_t(OOK)) {
+  assert(OOK != OO_None);
+  assert(getOperator() == OOK);
+}
+
+void IdentifierOrOverloadedOperator::Profile(llvm::FoldingSetNodeID &ID) const {
+  if (auto *Identifier = getIdentifier()) {
+    ID.AddBoolean(false);
+    ID.AddPointer(Identifier);
+  } else {
+    ID.AddBoolean(true);
+    ID.AddInteger(getOperator());
+  }
+}
+
 TemplateName::TemplateName(void *Ptr) {
   Storage = StorageType::getFromOpaqueValue(Ptr);
 }
@@ -404,12 +429,15 @@ void TemplateName::print(raw_ostream &OS, const PrintingPolicy &Policy,
   } else if (DependentTemplateName *DTN = getAsDependentTemplateName()) {
     if (NestedNameSpecifier *NNS = DTN->getQualifier())
       NNS->print(OS, Policy);
-    OS << "template ";
 
-    if (DTN->isIdentifier())
-      OS << DTN->getIdentifier()->getName();
+    if (DTN->hasTemplateKeyword())
+      OS << "template ";
+
+    IdentifierOrOverloadedOperator Name = DTN->getName();
+    if (const IdentifierInfo *II = Name.getIdentifier())
+      OS << II->getName();
     else
-      OS << "operator " << getOperatorSpelling(DTN->getOperator());
+      OS << "operator " << getOperatorSpelling(Name.getOperator());
   } else if (SubstTemplateTemplateParmStorage *subst =
                  getAsSubstTemplateTemplateParm()) {
     subst->getReplacement().print(OS, Policy, Qual);

@@ -566,7 +566,6 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     return IsStructurallyEquivalent(Context, NNS1->getAsNamespaceAlias(),
                                     NNS2->getAsNamespaceAlias());
   case NestedNameSpecifier::TypeSpec:
-  case NestedNameSpecifier::TypeSpecWithTemplate:
     return IsStructurallyEquivalent(Context, QualType(NNS1->getAsType(), 0),
                                     QualType(NNS2->getAsType(), 0));
   case NestedNameSpecifier::Global:
@@ -620,12 +619,12 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     if (!IsStructurallyEquivalent(Context, DN1->getQualifier(),
                                   DN2->getQualifier()))
       return false;
-    if (DN1->isIdentifier() && DN2->isIdentifier())
-      return IsStructurallyEquivalent(DN1->getIdentifier(),
-                                      DN2->getIdentifier());
-    else if (DN1->isOverloadedOperator() && DN2->isOverloadedOperator())
-      return DN1->getOperator() == DN2->getOperator();
-    return false;
+
+    IdentifierOrOverloadedOperator IO1 = DN1->getName(), IO2 = DN2->getName();
+    const IdentifierInfo *II1 = IO1.getIdentifier(), *II2 = IO2.getIdentifier();
+    if (!II1 || !II2)
+      return IO1.getOperator() == IO2.getOperator();
+    return IsStructurallyEquivalent(II1, II2);
   }
 
   case TemplateName::SubstTemplateTemplateParmPack: {

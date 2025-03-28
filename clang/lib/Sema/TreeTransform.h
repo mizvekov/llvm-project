@@ -4617,7 +4617,6 @@ NestedNameSpecifierLoc TreeTransform<Derived>::TransformNestedNameSpecifierLoc(
       break;
     }
 
-    case NestedNameSpecifier::TypeSpecWithTemplate:
     case NestedNameSpecifier::TypeSpec: {
       TypeLoc TL = TransformTypeInObjectScope(Q.getTypeLoc(), ObjectType,
                                               FirstQualifierInScope, SS);
@@ -4637,8 +4636,7 @@ NestedNameSpecifierLoc TreeTransform<Derived>::TransformNestedNameSpecifierLoc(
           TL = ETL.getNamedTypeLoc();
         }
 
-        SS.Extend(SemaRef.Context, TL.getTemplateKeywordLoc(), TL,
-                  Q.getLocalEndLoc());
+        SS.Extend(SemaRef.Context, TL, Q.getLocalEndLoc());
         break;
       }
       // If the nested-name-specifier is an invalid type def, don't emit an
@@ -4778,19 +4776,16 @@ TreeTransform<Derived>::TransformTemplateName(CXXScopeSpec &SS,
     // FIXME: Preserve the location of the "template" keyword.
     SourceLocation TemplateKWLoc = NameLoc;
 
-    if (DTN->isIdentifier()) {
-      return getDerived().RebuildTemplateName(SS,
-                                              TemplateKWLoc,
-                                              *DTN->getIdentifier(),
-                                              NameLoc,
-                                              ObjectType,
-                                              FirstQualifierInScope,
+    IdentifierOrOverloadedOperator IO = DTN->getName();
+    if (const IdentifierInfo *II = IO.getIdentifier()) {
+      return getDerived().RebuildTemplateName(SS, TemplateKWLoc, *II, NameLoc,
+                                              ObjectType, FirstQualifierInScope,
                                               AllowInjectedClassName);
     }
 
-    return getDerived().RebuildTemplateName(SS, TemplateKWLoc,
-                                            DTN->getOperator(), NameLoc,
-                                            ObjectType, AllowInjectedClassName);
+    return getDerived().RebuildTemplateName(SS, TemplateKWLoc, IO.getOperator(),
+                                            NameLoc, ObjectType,
+                                            AllowInjectedClassName);
   }
 
   // FIXME: Try to preserve more of the TemplateName.
@@ -5384,10 +5379,13 @@ TypeSourceInfo *TreeTransform<Derived>::TransformTSIInObjectScope(
     DependentTemplateSpecializationTypeLoc SpecTL =
         TL.castAs<DependentTemplateSpecializationTypeLoc>();
 
+    const IdentifierInfo *II = SpecTL.getTypePtr()
+                                   ->getDependentTemplateName()
+                                   .getName()
+                                   .getIdentifier();
     TemplateName Template = getDerived().RebuildTemplateName(
-        SS, SpecTL.getTemplateKeywordLoc(),
-        *SpecTL.getTypePtr()->getDependentTemplateName().getIdentifier(),
-        SpecTL.getTemplateNameLoc(), ObjectType, UnqualLookup,
+        SS, SpecTL.getTemplateKeywordLoc(), *II, SpecTL.getTemplateNameLoc(),
+        ObjectType, UnqualLookup,
         /*AllowInjectedClassName*/ true);
     if (Template.isNull())
       return nullptr;
@@ -17514,8 +17512,7 @@ TreeTransform<Derived>::RebuildCXXPseudoDestructorExpr(Expr *Base,
           << ScopeType->getType() << getSema().getLangOpts().CPlusPlus;
       return ExprError();
     }
-    SS.Extend(SemaRef.Context, SourceLocation(), ScopeType->getTypeLoc(),
-              CCLoc);
+    SS.Extend(SemaRef.Context, ScopeType->getTypeLoc(), CCLoc);
   }
 
   SourceLocation TemplateKWLoc; // FIXME: retrieve it from caller.

@@ -159,6 +159,7 @@ static_assert(std::is_const<ExampleTypes::T>(), "message");
 // expected-error@-1{{static assertion failed due to requirement 'std::is_const<int>()': message}}
 static_assert(!(std::is_const<const ExampleTypes::T>()()), "message");
 // expected-error@-1{{static assertion failed due to requirement '!(std::is_const<const int>()())': message}}
+// printing nested names, and this propagates to template arguments.
 static_assert(std::is_same<decltype(std::is_const<const ExampleTypes::T>()), int>::value, "message");
 // expected-error@-1{{static assertion failed due to requirement 'std::is_same<std::is_const<const int>, int>::value': message}}
 static_assert(std::is_const<decltype(ExampleTypes::T(3))>::value, "message");
@@ -196,8 +197,10 @@ struct NestedTemplates1 {
 
 template <typename T, typename U, int a>
 void foo2() {
+  // FIXME: Here the template keyword is dropped because the failed condition
+  // for a static assert is always printed with canonical types.
   static_assert(::ns::NestedTemplates1<T, a>::NestedTemplates2::template NestedTemplates3<U>::value, "message");
-  // expected-error@-1{{static assertion failed due to requirement '::ns::NestedTemplates1<int, 3>::NestedTemplates2::template NestedTemplates3<float>::value': message}}
+  // expected-error@-1{{static assertion failed due to requirement '::ns::NestedTemplates1<int, 3>::NestedTemplates2::NestedTemplates3<float>::value': message}}
 }
 template void foo2<int, float, 3>();
 // expected-note@-1{{in instantiation of function template specialization 'foo2<int, float, 3>' requested here}}

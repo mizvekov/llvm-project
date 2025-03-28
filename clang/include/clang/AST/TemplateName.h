@@ -16,6 +16,7 @@
 #include "clang/AST/DependenceFlags.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/Basic/LLVM.h"
+#include "clang/Basic/OperatorKinds.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -537,6 +538,30 @@ public:
   }
 };
 
+struct IdentifierOrOverloadedOperator {
+  IdentifierOrOverloadedOperator(const IdentifierInfo *II);
+  IdentifierOrOverloadedOperator(OverloadedOperatorKind OOK);
+
+  /// Returns the identifier to which this template name refers.
+  const IdentifierInfo *getIdentifier() const {
+    if (getOperator() != OO_None)
+      return nullptr;
+    return reinterpret_cast<const IdentifierInfo *>(PtrOrOp);
+  }
+
+  /// Return the overloaded operator to which this template name refers.
+  OverloadedOperatorKind getOperator() const {
+    uintptr_t OOK = -PtrOrOp;
+    return OOK < NUM_OVERLOADED_OPERATORS ? OverloadedOperatorKind(OOK)
+                                          : OO_None;
+  }
+
+  void Profile(llvm::FoldingSetNodeID &ID) const;
+
+private:
+  uintptr_t PtrOrOp;
+};
+
 /// Represents a dependent template name that cannot be
 /// resolved prior to template instantiation.
 ///
@@ -552,96 +577,36 @@ class DependentTemplateName : public llvm::FoldingSetNode {
   /// name.
   ///
   /// The bit stored in this qualifier describes whether the \c Name field
-  /// is interpreted as an IdentifierInfo pointer (when clear) or as an
-  /// overloaded operator kind (when set).
+  /// was preceeded by a template keyword.
   llvm::PointerIntPair<NestedNameSpecifier *, 1, bool> Qualifier;
 
   /// The dependent template name.
-  union {
-    /// The identifier template name.
-    ///
-    /// Only valid when the bit on \c Qualifier is clear.
-    const IdentifierInfo *Identifier;
-
-    /// The overloaded operator name.
-    ///
-    /// Only valid when the bit on \c Qualifier is set.
-    OverloadedOperatorKind Operator;
-  };
-
-  /// The canonical template name to which this dependent
-  /// template name refers.
-  ///
-  /// The canonical template name for a dependent template name is
-  /// another dependent template name whose nested name specifier is
-  /// canonical.
-  TemplateName CanonicalTemplateName;
+  IdentifierOrOverloadedOperator Name;
 
   DependentTemplateName(NestedNameSpecifier *Qualifier,
-                        const IdentifierInfo *Identifier)
-      : Qualifier(Qualifier, false), Identifier(Identifier),
-        CanonicalTemplateName(this) {}
-
-  DependentTemplateName(NestedNameSpecifier *Qualifier,
-                        const IdentifierInfo *Identifier,
-                        TemplateName Canon)
-      : Qualifier(Qualifier, false), Identifier(Identifier),
-        CanonicalTemplateName(Canon) {}
-
-  DependentTemplateName(NestedNameSpecifier *Qualifier,
-                        OverloadedOperatorKind Operator)
-      : Qualifier(Qualifier, true), Operator(Operator),
-        CanonicalTemplateName(this) {}
-
-  DependentTemplateName(NestedNameSpecifier *Qualifier,
-                        OverloadedOperatorKind Operator,
-                        TemplateName Canon)
-       : Qualifier(Qualifier, true), Operator(Operator),
-         CanonicalTemplateName(Canon) {}
+                        IdentifierOrOverloadedOperator Name,
+                        bool HasTemplateKeyword)
+      : Qualifier(Qualifier, HasTemplateKeyword), Name(Name) {}
 
 public:
   /// Return the nested name specifier that qualifies this name.
   NestedNameSpecifier *getQualifier() const { return Qualifier.getPointer(); }
 
-  /// Determine whether this template name refers to an identifier.
-  bool isIdentifier() const { return !Qualifier.getInt(); }
+  IdentifierOrOverloadedOperator getName() const { return Name; }
 
-  /// Returns the identifier to which this template name refers.
-  const IdentifierInfo *getIdentifier() const {
-    assert(isIdentifier() && "Template name isn't an identifier?");
-    return Identifier;
-  }
-
-  /// Determine whether this template name refers to an overloaded
-  /// operator.
-  bool isOverloadedOperator() const { return Qualifier.getInt(); }
-
-  /// Return the overloaded operator to which this template name refers.
-  OverloadedOperatorKind getOperator() const {
-    assert(isOverloadedOperator() &&
-           "Template name isn't an overloaded operator?");
-    return Operator;
-  }
+  /// Was this template name was preceeded by the template keyword?
+  bool hasTemplateKeyword() const { return Qualifier.getInt(); }
 
   void Profile(llvm::FoldingSetNodeID &ID) {
-    if (isIdentifier())
-      Profile(ID, getQualifier(), getIdentifier());
-    else
-      Profile(ID, getQualifier(), getOperator());
+    Profile(ID, getQualifier(), getName(), hasTemplateKeyword());
   }
 
   static void Profile(llvm::FoldingSetNodeID &ID, NestedNameSpecifier *NNS,
-                      const IdentifierInfo *Identifier) {
+                      IdentifierOrOverloadedOperator Name,
+                      bool HasTemplateKeyword) {
     ID.AddPointer(NNS);
-    ID.AddBoolean(false);
-    ID.AddPointer(Identifier);
-  }
-
-  static void Profile(llvm::FoldingSetNodeID &ID, NestedNameSpecifier *NNS,
-                      OverloadedOperatorKind Operator) {
-    ID.AddPointer(NNS);
-    ID.AddBoolean(true);
-    ID.AddInteger(Operator);
+    ID.AddBoolean(HasTemplateKeyword);
+    Name.Profile(ID);
   }
 };
 

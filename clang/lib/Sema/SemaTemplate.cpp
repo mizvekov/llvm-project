@@ -364,8 +364,8 @@ bool Sema::DiagnoseUnknownTemplateName(const IdentifierInfo &II,
   // The code is missing a 'template' keyword prior to the dependent template
   // name.
   NestedNameSpecifier *Qualifier = (NestedNameSpecifier *)SS->getScopeRep();
-  SuggestedTemplate
-    = TemplateTy::make(Context.getDependentTemplateName(Qualifier, &II));
+  SuggestedTemplate = TemplateTy::make(Context.getDependentTemplateName(
+      Qualifier, &II, /*HasTemplateKeyword=*/false));
   Diag(IILoc, diag::err_template_kw_missing)
       << SuggestedTemplate.get()
       << FixItHint::CreateInsertion(IILoc, "template ");
@@ -3483,7 +3483,7 @@ QualType Sema::CheckTemplateIdType(TemplateName Name,
                                    TemplateArgumentListInfo &TemplateArgs) {
   DependentTemplateName *DTN =
       Name.getUnderlying().getAsDependentTemplateName();
-  if (DTN && DTN->isIdentifier())
+  if (DTN && DTN->getName().getIdentifier())
     // When building a template-id where the template-name is dependent,
     // assume the template is a type template. Either our assumption is
     // correct, or the code is ill-formed and will be diagnosed when the
@@ -4810,13 +4810,13 @@ TemplateNameKind Sema::ActOnTemplateName(Scope *S,
 
   switch (Name.getKind()) {
   case UnqualifiedIdKind::IK_Identifier:
-    Result = TemplateTy::make(
-        Context.getDependentTemplateName(Qualifier, Name.Identifier));
+    Result = TemplateTy::make(Context.getDependentTemplateName(
+        Qualifier, Name.Identifier, TemplateKWLoc.isValid()));
     return TNK_Dependent_template_name;
 
   case UnqualifiedIdKind::IK_OperatorFunctionId:
     Result = TemplateTy::make(Context.getDependentTemplateName(
-        Qualifier, Name.OperatorFunctionId.Operator));
+        Qualifier, Name.OperatorFunctionId.Operator, TemplateKWLoc.isValid()));
     return TNK_Function_template;
 
   case UnqualifiedIdKind::IK_LiteralOperatorId:
@@ -5330,7 +5330,7 @@ bool Sema::CheckTemplateArgument(NamedDecl *Param, TemplateArgumentLoc &ArgLoc,
         // know that we need a non-type template argument, convert this
         // template name into an expression.
 
-        DeclarationNameInfo NameInfo(DTN->getIdentifier(),
+        DeclarationNameInfo NameInfo(DTN->getName().getIdentifier(),
                                      ArgLoc.getTemplateNameLoc());
 
         CXXScopeSpec SS;
@@ -6153,7 +6153,6 @@ bool UnnamedLocalNoLinkageFinder::VisitNestedNameSpecifier(
     return false;
 
   case NestedNameSpecifier::TypeSpec:
-  case NestedNameSpecifier::TypeSpecWithTemplate:
     return Visit(QualType(NNS->getAsType(), 0));
   }
   llvm_unreachable("Invalid NestedNameSpecifier::Kind!");
@@ -7525,9 +7524,8 @@ ExprResult Sema::BuildExpressionFromDeclTemplateArgument(
             isa<IndirectFieldDecl>(VD)));
     QualType ClassType
       = Context.getTypeDeclType(cast<RecordDecl>(VD->getDeclContext()));
-    NestedNameSpecifier *Qualifier
-      = NestedNameSpecifier::Create(Context, nullptr, false,
-                                    ClassType.getTypePtr());
+    NestedNameSpecifier *Qualifier =
+        NestedNameSpecifier::Create(Context, nullptr, ClassType.getTypePtr());
     SS.MakeTrivial(Context, Qualifier, Loc);
   }
 
@@ -10693,7 +10691,7 @@ Sema::ActOnTypenameType(Scope *S, SourceLocation TypenameLoc,
     assert(DTN && "dependent template has non-dependent name?");
     assert(DTN->getQualifier() == SS.getScopeRep());
 
-    if (!DTN->isIdentifier()) {
+    if (!DTN->getName().getIdentifier()) {
       Diag(TemplateIILoc, diag::err_template_id_not_a_type) << Template;
       NoteAllFoundTemplates(Template);
       return true;

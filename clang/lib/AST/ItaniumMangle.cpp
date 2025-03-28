@@ -1394,8 +1394,7 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     mangleSourceNameWithAbiTags(qualifier->getAsNamespaceAlias());
     break;
 
-  case NestedNameSpecifier::TypeSpec:
-  case NestedNameSpecifier::TypeSpecWithTemplate: {
+  case NestedNameSpecifier::TypeSpec: {
     const Type *type = qualifier->getAsType();
 
     // We only want to use an unresolved-type encoding if this is one of:
@@ -2180,12 +2179,12 @@ void CXXNameMangler::manglePrefix(NestedNameSpecifier *qualifier) {
     return;
 
   case NestedNameSpecifier::TypeSpec:
-  case NestedNameSpecifier::TypeSpecWithTemplate:
     if (NestedNameSpecifier *Prefix = qualifier->getPrefix()) {
       const auto *DTST =
           cast<DependentTemplateSpecializationType>(qualifier->getAsType());
       TemplateName Name = getASTContext().getDependentTemplateName(
-          Prefix, DTST->getDependentTemplateName().getIdentifier());
+          Prefix, DTST->getDependentTemplateName().getName(),
+          /*HasTemplateKeyword=*/true);
       QualType NewT = getASTContext().getDependentTemplateSpecializationType(
           DTST->getKeyword(), Name, DTST->template_arguments());
       manglePrefix(NewT);
@@ -2274,10 +2273,11 @@ void CXXNameMangler::mangleTemplatePrefix(TemplateName Template) {
   if (Clang11Compat && mangleSubstitution(Template))
     return;
 
-  if (const IdentifierInfo *Id = Dependent->getIdentifier())
+  if (IdentifierOrOverloadedOperator Name = Dependent->getName();
+      const IdentifierInfo *Id = Name.getIdentifier())
     mangleSourceName(Id);
   else
-    mangleOperatorName(Dependent->getOperator(), UnknownArity);
+    mangleOperatorName(Name.getOperator(), UnknownArity);
 
   addSubstitution(Template);
 }
@@ -2385,12 +2385,13 @@ void CXXNameMangler::mangleType(TemplateName TN) {
 
   case TemplateName::DependentTemplate: {
     const DependentTemplateName *Dependent = TN.getAsDependentTemplateName();
-    assert(Dependent->isIdentifier());
+    const IdentifierInfo *II = Dependent->getName().getIdentifier();
+    assert(II);
 
     // <class-enum-type> ::= <name>
     // <name> ::= <nested-name>
     mangleUnresolvedPrefix(Dependent->getQualifier());
-    mangleSourceName(Dependent->getIdentifier());
+    mangleSourceName(II);
     break;
   }
 

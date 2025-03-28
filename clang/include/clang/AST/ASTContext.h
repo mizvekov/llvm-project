@@ -2395,9 +2395,8 @@ public:
                                         TemplateName Template) const;
 
   TemplateName getDependentTemplateName(NestedNameSpecifier *NNS,
-                                        const IdentifierInfo *Name) const;
-  TemplateName getDependentTemplateName(NestedNameSpecifier *NNS,
-                                        OverloadedOperatorKind Operator) const;
+                                        IdentifierOrOverloadedOperator Name,
+                                        bool HasTemplateKeyword) const;
   TemplateName
   getSubstTemplateTemplateParm(TemplateName replacement, Decl *AssociatedDecl,
                                unsigned Index,
