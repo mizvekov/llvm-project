@@ -5773,6 +5773,26 @@ QualType ASTContext::getDependentTemplateSpecializationType(
   return getDependentTemplateSpecializationType(Keyword, Name, ArgCopy);
 }
 
+static QualType getCanonicalDependentTemplateSpecializationType(
+    const ASTContext &Ctx, ElaboratedTypeKeyword Keyword, TemplateName Name,
+    ArrayRef<TemplateArgument> Args) {
+  TemplateName CanonName = Ctx.getCanonicalTemplateName(Name);
+
+  ElaboratedTypeKeyword CanonKeyword = Keyword;
+  if (Keyword == ElaboratedTypeKeyword::None)
+    CanonKeyword = ElaboratedTypeKeyword::Typename;
+
+  bool AnyNonCanonArgs = false;
+  auto CanonArgs = ::getCanonicalTemplateArguments(Ctx, Args, AnyNonCanonArgs);
+
+  QualType Canon;
+  if (!AnyNonCanonArgs && CanonName == Name && CanonKeyword == Keyword)
+    return QualType();
+
+  return Ctx.getDependentTemplateSpecializationType(CanonKeyword, CanonName,
+                                                    CanonArgs);
+}
+
 QualType ASTContext::getDependentTemplateSpecializationType(
     ElaboratedTypeKeyword Keyword, TemplateName Name,
     ArrayRef<TemplateArgument> Args) const {
@@ -5780,26 +5800,13 @@ QualType ASTContext::getDependentTemplateSpecializationType(
   DependentTemplateSpecializationType::Profile(ID, *this, Keyword, Name, Args);
 
   void *InsertPos = nullptr;
-  DependentTemplateSpecializationType *T
-    = DependentTemplateSpecializationTypes.FindNodeOrInsertPos(ID, InsertPos);
-  if (T)
+  if (auto *T = DependentTemplateSpecializationTypes.FindNodeOrInsertPos(
+          ID, InsertPos))
     return QualType(T, 0);
 
-  TemplateName CanonName = getCanonicalTemplateName(Name);
-
-  ElaboratedTypeKeyword CanonKeyword = Keyword;
-  if (Keyword == ElaboratedTypeKeyword::None)
-    CanonKeyword = ElaboratedTypeKeyword::Typename;
-
-  bool AnyNonCanonArgs = false;
-  auto CanonArgs =
-      ::getCanonicalTemplateArguments(*this, Args, AnyNonCanonArgs);
-
-  QualType Canon;
-  if (AnyNonCanonArgs || CanonName != Name || CanonKeyword != Keyword) {
-    Canon = getDependentTemplateSpecializationType(CanonKeyword, CanonName,
-                                                   CanonArgs);
-
+  QualType Canon = ::getCanonicalDependentTemplateSpecializationType(
+      *this, Keyword, Name, Args);
+  if (!Canon.isNull()) {
     // Find the insert position again.
     [[maybe_unused]] auto *Nothing =
         DependentTemplateSpecializationTypes.FindNodeOrInsertPos(ID, InsertPos);
@@ -5809,9 +5816,57 @@ QualType ASTContext::getDependentTemplateSpecializationType(
   void *Mem = Allocate((sizeof(DependentTemplateSpecializationType) +
                         sizeof(TemplateArgument) * Args.size()),
                        alignof(DependentTemplateSpecializationType));
-  T = new (Mem) DependentTemplateSpecializationType(Keyword, Name, Args, Canon);
+  auto *T =
+      new (Mem) DependentTemplateSpecializationType(Keyword, Name, Args, Canon);
   Types.push_back(T);
   DependentTemplateSpecializationTypes.InsertNode(T, InsertPos);
+  return QualType(T, 0);
+}
+
+QualType ASTContext::getDependentTemplateSpecializationType(
+    ElaboratedTypeKeyword Keyword, NestedNameSpecifier *NNS,
+    IdentifierOrOverloadedOperator Name, bool HasTemplateKeyword,
+    ArrayRef<TemplateArgumentLoc> Args) const {
+  // TODO: avoid this copy
+  SmallVector<TemplateArgument, 16> ArgCopy;
+  for (unsigned I = 0, E = Args.size(); I != E; ++I)
+    ArgCopy.push_back(Args[I].getArgument());
+  return getDependentTemplateSpecializationType(Keyword, NNS, Name,
+                                                HasTemplateKeyword, ArgCopy);
+}
+
+QualType ASTContext::getDependentTemplateSpecializationType(
+    ElaboratedTypeKeyword Keyword, NestedNameSpecifier *NNS,
+    IdentifierOrOverloadedOperator Name, bool HasTemplateKeyword,
+    ArrayRef<TemplateArgument> Args) const {
+  void *NameInsertPos = nullptr;
+  {
+    llvm::FoldingSetNodeID ID;
+    DependentTemplateName::Profile(ID, NNS, Name, HasTemplateKeyword);
+    if (auto *QTN =
+            DependentTemplateNames.FindNodeOrInsertPos(ID, NameInsertPos))
+      return getDependentTemplateSpecializationType(Keyword, TemplateName(QTN),
+                                                    Args);
+  }
+
+  struct Storage {
+    DependentTemplateName Name;
+    DependentTemplateSpecializationType Type;
+  };
+  auto *S = reinterpret_cast<Storage *>(
+      Allocate(sizeof(Storage) + sizeof(TemplateArgument) * Args.size(),
+               alignof(Storage)));
+
+  new (&S->Name) DependentTemplateName(NNS, Name, HasTemplateKeyword);
+  DependentTemplateNames.InsertNode(&S->Name, NameInsertPos);
+
+  TemplateName TN(&S->Name);
+  QualType Canon = ::getCanonicalDependentTemplateSpecializationType(
+      *this, Keyword, TN, Args);
+  auto *T = new (&S->Type)
+      DependentTemplateSpecializationType(Keyword, TN, Args, Canon);
+  Types.push_back(T);
+  DependentTemplateSpecializationTypes.InsertNode(T);
   return QualType(T, 0);
 }
 
@@ -10066,9 +10121,6 @@ TemplateName
 ASTContext::getDependentTemplateName(NestedNameSpecifier *NNS,
                                      IdentifierOrOverloadedOperator Name,
                                      bool HasTemplateKeyword) const {
-  assert((!NNS || NNS->isDependent()) &&
-         "Nested name specifier must be dependent");
-
   llvm::FoldingSetNodeID ID;
   DependentTemplateName::Profile(ID, NNS, Name, HasTemplateKeyword);
 

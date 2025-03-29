@@ -585,8 +585,7 @@ class DependentTemplateName : public llvm::FoldingSetNode {
 
   DependentTemplateName(NestedNameSpecifier *Qualifier,
                         IdentifierOrOverloadedOperator Name,
-                        bool HasTemplateKeyword)
-      : Qualifier(Qualifier, HasTemplateKeyword), Name(Name) {}
+                        bool HasTemplateKeyword);
 
 public:
   /// Return the nested name specifier that qualifies this name.
@@ -597,17 +596,10 @@ public:
   /// Was this template name was preceeded by the template keyword?
   bool hasTemplateKeyword() const { return Qualifier.getInt(); }
 
-  void Profile(llvm::FoldingSetNodeID &ID) {
-    Profile(ID, getQualifier(), getName(), hasTemplateKeyword());
-  }
-
+  void Profile(llvm::FoldingSetNodeID &ID);
   static void Profile(llvm::FoldingSetNodeID &ID, NestedNameSpecifier *NNS,
                       IdentifierOrOverloadedOperator Name,
-                      bool HasTemplateKeyword) {
-    ID.AddPointer(NNS);
-    ID.AddBoolean(HasTemplateKeyword);
-    Name.Profile(ID);
-  }
+                      bool HasTemplateKeyword);
 };
 
 } // namespace clang.

@@ -862,11 +862,10 @@ bool Sema::ActOnCXXNestedNameSpecifier(Scope *S,
     // Handle a dependent template specialization for which we cannot resolve
     // the template name.
     assert(DTN->getQualifier() == SS.getScopeRep());
-    TemplateName TN = Context.getDependentTemplateName(
-        /*NNS=*/nullptr, DTN->getName().getIdentifier(),
-        TemplateKWLoc.isValid());
     QualType T = Context.getDependentTemplateSpecializationType(
-        ElaboratedTypeKeyword::None, TN, TemplateArgs.arguments());
+        ElaboratedTypeKeyword::None, /*NNS=*/nullptr,
+        DTN->getName().getIdentifier(), TemplateKWLoc.isValid(),
+        TemplateArgs.arguments());
 
     // Create source-location information for this type.
     TypeLocBuilder Builder;

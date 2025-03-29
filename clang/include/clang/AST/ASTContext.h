@@ -1847,6 +1847,15 @@ public:
                                          TemplateName Name,
                                          ArrayRef<TemplateArgument> Args) const;
 
+  QualType getDependentTemplateSpecializationType(
+      ElaboratedTypeKeyword Keyword, NestedNameSpecifier *NNS,
+      IdentifierOrOverloadedOperator Name, bool HasTemplateKeyword,
+      ArrayRef<TemplateArgumentLoc> Args) const;
+  QualType getDependentTemplateSpecializationType(
+      ElaboratedTypeKeyword Keyword, NestedNameSpecifier *NNS,
+      IdentifierOrOverloadedOperator Name, bool HasTemplateKeyword,
+      ArrayRef<TemplateArgument> Args) const;
+
   TemplateArgument getInjectedTemplateArg(NamedDecl *ParamDecl) const;
 
   /// Form a pack expansion type with the given pattern.

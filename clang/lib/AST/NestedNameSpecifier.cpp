@@ -259,11 +259,10 @@ NestedNameSpecifier::translateToType(const ASTContext &Context) const {
     case Type::DependentTemplateSpecialization: {
       const auto *DT = cast<DependentTemplateSpecializationType>(T);
       const DependentTemplateName &DTN = DT->getDependentTemplateName();
-      TemplateName Name = Context.getDependentTemplateName(
-          Prefix, DTN.getName(), DTN.hasTemplateKeyword());
       return Context
           .getDependentTemplateSpecializationType(
-              ElaboratedTypeKeyword::None, Name, DT->template_arguments())
+              ElaboratedTypeKeyword::None, Prefix, DTN.getName(),
+              DTN.hasTemplateKeyword(), DT->template_arguments())
           .getTypePtr();
     }
     case Type::Record:

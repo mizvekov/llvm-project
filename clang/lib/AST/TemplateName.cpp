@@ -308,6 +308,27 @@ DeducedTemplateStorage *TemplateName::getAsDeducedTemplateName() const {
   return nullptr;
 }
 
+DependentTemplateName::DependentTemplateName(
+    NestedNameSpecifier *Qualifier, IdentifierOrOverloadedOperator Name,
+    bool HasTemplateKeyword)
+    : Qualifier(Qualifier, HasTemplateKeyword), Name(Name) {
+  assert((!Qualifier || Qualifier->isDependent()) &&
+         "Qualifier must be dependent");
+}
+
+void DependentTemplateName::Profile(llvm::FoldingSetNodeID &ID) {
+  Profile(ID, getQualifier(), getName(), hasTemplateKeyword());
+}
+
+void DependentTemplateName::Profile(llvm::FoldingSetNodeID &ID,
+                                    NestedNameSpecifier *NNS,
+                                    IdentifierOrOverloadedOperator Name,
+                                    bool HasTemplateKeyword) {
+  ID.AddPointer(NNS);
+  ID.AddBoolean(HasTemplateKeyword);
+  Name.Profile(ID);
+}
+
 TemplateNameDependence TemplateName::getDependence() const {
   switch (getKind()) {
   case NameKind::Template:

@@ -2182,11 +2182,10 @@ void CXXNameMangler::manglePrefix(NestedNameSpecifier *qualifier) {
     if (NestedNameSpecifier *Prefix = qualifier->getPrefix()) {
       const auto *DTST =
           cast<DependentTemplateSpecializationType>(qualifier->getAsType());
-      TemplateName Name = getASTContext().getDependentTemplateName(
-          Prefix, DTST->getDependentTemplateName().getName(),
-          /*HasTemplateKeyword=*/true);
       QualType NewT = getASTContext().getDependentTemplateSpecializationType(
-          DTST->getKeyword(), Name, DTST->template_arguments());
+          DTST->getKeyword(), Prefix,
+          DTST->getDependentTemplateName().getName(),
+          /*HasTemplateKeyword=*/true, DTST->template_arguments());
       manglePrefix(NewT);
       return;
     }
