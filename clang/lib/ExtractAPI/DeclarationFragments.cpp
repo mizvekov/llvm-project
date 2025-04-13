@@ -214,11 +214,6 @@ DeclarationFragmentsBuilder::getFragmentsForNNS(const NestedNameSpecifier *NNS,
     Fragments.append(getFragmentsForNNS(NNS->getPrefix(), Context, After));
 
   switch (NNS->getKind()) {
-  case NestedNameSpecifier::Identifier:
-    Fragments.append(NNS->getAsIdentifier()->getName(),
-                     DeclarationFragments::FragmentKind::Identifier);
-    break;
-
   case NestedNameSpecifier::Namespace: {
     const NamespaceDecl *NS = NNS->getAsNamespace();
     if (NS->isAnonymousNamespace())

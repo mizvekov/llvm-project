@@ -2875,6 +2875,11 @@ public:
   /// qualifiers from the outermost type.
   const ArrayType *castAsArrayTypeUnsafe() const;
 
+  /// If this type represents a qualified-id, this returns it's nested name
+  /// specifier. For example, for the qualified-id "foo::bar::baz", this returns
+  /// "foo::bar". Returns null if this type represents an unqualified-id.
+  NestedNameSpecifier *getPrefix() const;
+
   /// Determine whether this type had the specified attribute applied to it
   /// (looking through top-level type sugar).
   bool hasAttr(attr::Kind AK) const;
@@ -7037,9 +7042,9 @@ class DependentNameType : public TypeWithKeyword, public llvm::FoldingSetNode {
                     const IdentifierInfo *Name, QualType CanonType)
       : TypeWithKeyword(Keyword, DependentName, CanonType,
                         TypeDependence::DependentInstantiation |
-                            toTypeDependence(NNS->getDependence())),
+                            (NNS ? toTypeDependence(NNS->getDependence())
+                                 : TypeDependence::Dependent)),
         NNS(NNS), Name(Name) {
-    assert(NNS);
     assert(Name);
   }
 

@@ -9729,11 +9729,6 @@ ASTImporter::Import(NestedNameSpecifier *FromNNS) {
     return std::move(Err);
 
   switch (FromNNS->getKind()) {
-  case NestedNameSpecifier::Identifier:
-    assert(FromNNS->getAsIdentifier() && "NNS should contain identifier.");
-    return NestedNameSpecifier::Create(ToContext, Prefix,
-                                       Import(FromNNS->getAsIdentifier()));
-
   case NestedNameSpecifier::Namespace:
     if (ExpectedDecl NSOrErr = Import(FromNNS->getAsNamespace())) {
       return NestedNameSpecifier::Create(ToContext, Prefix,
@@ -9749,9 +9744,11 @@ ASTImporter::Import(NestedNameSpecifier *FromNNS) {
       return NSADOrErr.takeError();
 
   case NestedNameSpecifier::Global:
+    assert(Prefix == nullptr);
     return NestedNameSpecifier::GlobalSpecifier(ToContext);
 
   case NestedNameSpecifier::Super:
+    assert(Prefix == nullptr);
     if (ExpectedDecl RDOrErr = Import(FromNNS->getAsRecordDecl()))
       return NestedNameSpecifier::SuperSpecifier(ToContext,
                                                  cast<CXXRecordDecl>(*RDOrErr));
@@ -9759,8 +9756,9 @@ ASTImporter::Import(NestedNameSpecifier *FromNNS) {
       return RDOrErr.takeError();
 
   case NestedNameSpecifier::TypeSpec:
+    assert(Prefix == nullptr);
     if (ExpectedTypePtr TyOrErr = Import(FromNNS->getAsType())) {
-      return NestedNameSpecifier::Create(ToContext, Prefix, *TyOrErr);
+      return NestedNameSpecifier::Create(ToContext, *TyOrErr);
     } else {
       return TyOrErr.takeError();
     }
@@ -9803,11 +9801,6 @@ ASTImporter::Import(NestedNameSpecifierLoc FromNNS) {
     }
 
     switch (Kind) {
-    case NestedNameSpecifier::Identifier:
-      Builder.Extend(getToContext(), Spec->getAsIdentifier(), ToLocalBeginLoc,
-                     ToLocalEndLoc);
-      break;
-
     case NestedNameSpecifier::Namespace:
       Builder.Extend(getToContext(), Spec->getAsNamespace(), ToLocalBeginLoc,
                      ToLocalEndLoc);
@@ -9824,7 +9817,7 @@ ASTImporter::Import(NestedNameSpecifierLoc FromNNS) {
         return std::move(Err);
       TypeSourceInfo *TSI = getToContext().getTrivialTypeSourceInfo(
           QualType(Spec->getAsType(), 0), ToTLoc);
-      Builder.Extend(getToContext(), TSI->getTypeLoc(), ToLocalEndLoc);
+      Builder.Make(getToContext(), TSI->getTypeLoc(), ToLocalEndLoc);
       break;
     }
 
@@ -9841,7 +9834,7 @@ ASTImporter::Import(NestedNameSpecifierLoc FromNNS) {
                         ToSourceRangeOrErr->getBegin(),
                         ToSourceRangeOrErr->getEnd());
     }
-  }
+    }
   }
 
   return Builder.getWithLocInContext(getToContext());

@@ -755,9 +755,11 @@ getRequiredQualification(ASTContext &Context, const DeclContext *CurContext,
         continue;
 
       Result = NestedNameSpecifier::Create(Context, Result, Namespace);
-    } else if (const auto *TD = dyn_cast<TagDecl>(Parent))
-      Result = NestedNameSpecifier::Create(
-          Context, Result, Context.getTypeDeclType(TD).getTypePtr());
+    } else if (const auto *TD = dyn_cast<TagDecl>(Parent)) {
+      QualType ET = Context.getElaboratedType(
+          ElaboratedTypeKeyword::None, Result, Context.getTypeDeclType(TD));
+      Result = NestedNameSpecifier::Create(Context, ET.getTypePtr());
+    }
   }
   return Result;
 }
@@ -1218,8 +1220,7 @@ void ResultBuilder::MaybeAddResult(Result R, DeclContext *CurContext) {
           NestedNameSpecifier::Create(SemaRef.Context, nullptr, Namespace);
     else if (const TagDecl *Tag = dyn_cast<TagDecl>(Ctx))
       R.Qualifier = NestedNameSpecifier::Create(
-          SemaRef.Context, nullptr,
-          SemaRef.Context.getTypeDeclType(Tag).getTypePtr());
+          SemaRef.Context, SemaRef.Context.getTypeDeclType(Tag).getTypePtr());
     else
       R.QualifierIsInformative = false;
   }
@@ -1407,8 +1408,7 @@ void ResultBuilder::AddResult(Result R, DeclContext *CurContext,
           NestedNameSpecifier::Create(SemaRef.Context, nullptr, Namespace);
     else if (const auto *Tag = dyn_cast<TagDecl>(Ctx))
       R.Qualifier = NestedNameSpecifier::Create(
-          SemaRef.Context, nullptr,
-          SemaRef.Context.getTypeDeclType(Tag).getTypePtr());
+          SemaRef.Context, SemaRef.Context.getTypeDeclType(Tag).getTypePtr());
     else
       R.QualifierIsInformative = false;
   }
@@ -5588,9 +5588,11 @@ private:
     bool TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc NNSL) override {
       if (NNSL) {
         NestedNameSpecifier *NNS = NNSL.getNestedNameSpecifier();
-        const auto *Q = NNS->getPrefix();
+        const auto *NNST = NNS->getAsType();
+        const auto *Q = NNST ? NNST->getPrefix() : NNS->getPrefix();
         if (Q && isApprox(Q->getAsType(), T))
-          addType(NNS->getAsIdentifier());
+          if (const auto *DNT = dyn_cast_or_null<DependentNameType>(NNST))
+            addType(DNT->getIdentifier());
       }
       // FIXME: also handle T::foo<X>::bar
       return DynamicRecursiveASTVisitor::TraverseNestedNameSpecifierLoc(NNSL);

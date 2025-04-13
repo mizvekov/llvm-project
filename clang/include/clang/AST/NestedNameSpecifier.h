@@ -49,11 +49,7 @@ class TypeLoc;
 /// nested-namespace-specifier.
 class NestedNameSpecifier : public llvm::FoldingSetNode {
   /// Enumeration describing
-  enum StoredSpecifierKind {
-    StoredIdentifier = 0,
-    StoredDecl = 1,
-    StoredTypeSpec = 2
-  };
+  enum StoredSpecifierKind { StoredDecl = 0, StoredTypeSpec = 1 };
 
   /// The nested name specifier that precedes this nested name
   /// specifier.
@@ -61,7 +57,7 @@ class NestedNameSpecifier : public llvm::FoldingSetNode {
   /// The pointer is the nested-name-specifier that precedes this
   /// one. The integer stores one of the first four values of type
   /// SpecifierKind.
-  llvm::PointerIntPair<NestedNameSpecifier *, 2, StoredSpecifierKind> Prefix;
+  llvm::PointerIntPair<NestedNameSpecifier *, 1, StoredSpecifierKind> Prefix;
 
   /// The last component in the nested name specifier, which
   /// can be an identifier, a declaration, or a type.
@@ -76,9 +72,6 @@ public:
   /// The kind of specifier that completes this nested name
   /// specifier.
   enum SpecifierKind {
-    /// An identifier, stored as an IdentifierInfo*.
-    Identifier,
-
     /// A namespace, stored as a NamespaceDecl*.
     Namespace,
 
@@ -98,7 +91,7 @@ public:
 
 private:
   /// Builds the global specifier.
-  NestedNameSpecifier() : Prefix(nullptr, StoredIdentifier) {}
+  NestedNameSpecifier() : Prefix(nullptr, StoredDecl) {}
 
   /// Copy constructor used internally to clone nested name
   /// specifiers.
@@ -112,15 +105,6 @@ private:
 public:
   NestedNameSpecifier &operator=(const NestedNameSpecifier &) = delete;
 
-  /// Builds a specifier combining a prefix and an identifier.
-  ///
-  /// The prefix must be dependent, since nested name specifiers
-  /// referencing an identifier are only permitted when the identifier
-  /// cannot be resolved.
-  static NestedNameSpecifier *Create(const ASTContext &Context,
-                                     NestedNameSpecifier *Prefix,
-                                     const IdentifierInfo *II);
-
   /// Builds a nested name specifier that names a namespace.
   static NestedNameSpecifier *Create(const ASTContext &Context,
                                      NestedNameSpecifier *Prefix,
@@ -132,17 +116,7 @@ public:
                                      const NamespaceAliasDecl *Alias);
 
   /// Builds a nested name specifier that names a type.
-  static NestedNameSpecifier *
-  Create(const ASTContext &Context, NestedNameSpecifier *Prefix, const Type *T);
-
-  /// Builds a specifier that consists of just an identifier.
-  ///
-  /// The nested-name-specifier is assumed to be dependent, but has no
-  /// prefix because the prefix is implied by something outside of the
-  /// nested name specifier, e.g., in "x->Base::f", the "x" has a dependent
-  /// type.
-  static NestedNameSpecifier *Create(const ASTContext &Context,
-                                     const IdentifierInfo *II);
+  static NestedNameSpecifier *Create(const ASTContext &Context, const Type *T);
 
   /// Returns the nested name specifier representing the global
   /// scope.
@@ -165,15 +139,6 @@ public:
   /// Determine what kind of nested name specifier is stored.
   SpecifierKind getKind() const;
 
-  /// Retrieve the identifier stored in this nested name
-  /// specifier.
-  IdentifierInfo *getAsIdentifier() const {
-    if (Prefix.getInt() == StoredIdentifier)
-      return (IdentifierInfo *)Specifier;
-
-    return nullptr;
-  }
-
   /// Retrieve the namespace stored in this nested name
   /// specifier.
   NamespaceDecl *getAsNamespace() const;
@@ -193,11 +158,6 @@ public:
 
     return nullptr;
   }
-
-  /// Fully translate this nested name specifier to a type.
-  /// Unlike getAsType, this will convert this entire nested
-  /// name specifier chain into its equivalent type.
-  const Type *translateToType(const ASTContext &Context) const;
 
   NestedNameSpecifierDependence getDependence() const;
 
@@ -388,8 +348,7 @@ public:
   /// Retrieve the representation of the nested-name-specifier.
   NestedNameSpecifier *getRepresentation() const { return Representation; }
 
-  /// Extend the current nested-name-specifier by another
-  /// nested-name-specifier component of the form 'type::'.
+  /// Make a nested-name-specifier of the form 'type::'.
   ///
   /// \param Context The AST context in which this nested-name-specifier
   /// resides.
@@ -397,21 +356,7 @@ public:
   /// \param TL The TypeLoc that describes the type preceding the '::'.
   ///
   /// \param ColonColonLoc The location of the trailing '::'.
-  void Extend(ASTContext &Context, TypeLoc TL, SourceLocation ColonColonLoc);
-
-  /// Extend the current nested-name-specifier by another
-  /// nested-name-specifier component of the form 'identifier::'.
-  ///
-  /// \param Context The AST context in which this nested-name-specifier
-  /// resides.
-  ///
-  /// \param Identifier The identifier.
-  ///
-  /// \param IdentifierLoc The location of the identifier.
-  ///
-  /// \param ColonColonLoc The location of the trailing '::'.
-  void Extend(ASTContext &Context, IdentifierInfo *Identifier,
-              SourceLocation IdentifierLoc, SourceLocation ColonColonLoc);
+  void Make(ASTContext &Context, TypeLoc TL, SourceLocation ColonColonLoc);
 
   /// Extend the current nested-name-specifier by another
   /// nested-name-specifier component of the form 'namespace::'.

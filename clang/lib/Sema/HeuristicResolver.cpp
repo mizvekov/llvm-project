@@ -406,14 +406,17 @@ QualType HeuristicResolverImpl::resolveNestedNameSpecifierToType(
   // that may be dependent as well, so for convenience handle
   // the TypeSpec cases too.
   switch (NNS->getKind()) {
-  case NestedNameSpecifier::TypeSpec:
-    return QualType(NNS->getAsType(), 0);
-  case NestedNameSpecifier::Identifier: {
-    return resolveDeclsToType(
-        resolveDependentMember(
-            resolveNestedNameSpecifierToType(NNS->getPrefix()),
-            NNS->getAsIdentifier(), TypeFilter),
-        Ctx);
+  case NestedNameSpecifier::TypeSpec: {
+    const auto *T = NNS->getAsType();
+    // FIXME: Should this handle the DependentTemplateSpecializationType as
+    // well?
+    if (const auto *DTN = dyn_cast<DependentNameType>(T))
+      return resolveDeclsToType(
+          resolveDependentMember(
+              resolveNestedNameSpecifierToType(DTN->getQualifier()),
+              DTN->getIdentifier(), TypeFilter),
+          Ctx);
+    return QualType(T, 0);
   }
   default:
     break;

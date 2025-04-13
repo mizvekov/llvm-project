@@ -481,6 +481,19 @@ TypeLoc TypeLoc::findExplicitQualifierLoc() const {
   return {};
 }
 
+NestedNameSpecifierLoc TypeLoc::getPrefix() const {
+  switch (getTypeLocClass()) {
+  case TypeLoc::Elaborated:
+    return castAs<ElaboratedTypeLoc>().getQualifierLoc();
+  case TypeLoc::DependentName:
+    return castAs<DependentNameTypeLoc>().getQualifierLoc();
+  case TypeLoc::DependentTemplateSpecialization:
+    return castAs<DependentTemplateSpecializationTypeLoc>().getQualifierLoc();
+  default:
+    return NestedNameSpecifierLoc();
+  }
+}
+
 void ObjCTypeParamTypeLoc::initializeLocal(ASTContext &Context,
                                            SourceLocation Loc) {
   setNameLoc(Loc);

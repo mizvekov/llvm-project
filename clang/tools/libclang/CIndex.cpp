@@ -1420,52 +1420,6 @@ bool CursorVisitor::VisitDeclarationNameInfo(DeclarationNameInfo Name) {
   llvm_unreachable("Invalid DeclarationName::Kind!");
 }
 
-bool CursorVisitor::VisitNestedNameSpecifier(NestedNameSpecifier *NNS,
-                                             SourceRange Range) {
-  // FIXME: This whole routine is a hack to work around the lack of proper
-  // source information in nested-name-specifiers (PR5791). Since we do have
-  // a beginning source location, we can visit the first component of the
-  // nested-name-specifier, if it's a single-token component.
-  if (!NNS)
-    return false;
-
-  // Get the first component in the nested-name-specifier.
-  while (NestedNameSpecifier *Prefix = NNS->getPrefix())
-    NNS = Prefix;
-
-  switch (NNS->getKind()) {
-  case NestedNameSpecifier::Namespace:
-    return Visit(
-        MakeCursorNamespaceRef(NNS->getAsNamespace(), Range.getBegin(), TU));
-
-  case NestedNameSpecifier::NamespaceAlias:
-    return Visit(MakeCursorNamespaceRef(NNS->getAsNamespaceAlias(),
-                                        Range.getBegin(), TU));
-
-  case NestedNameSpecifier::TypeSpec: {
-    // If the type has a form where we know that the beginning of the source
-    // range matches up with a reference cursor. Visit the appropriate reference
-    // cursor.
-    const Type *T = NNS->getAsType();
-    if (const TypedefType *Typedef = dyn_cast<TypedefType>(T))
-      return Visit(MakeCursorTypeRef(Typedef->getDecl(), Range.getBegin(), TU));
-    if (const TagType *Tag = dyn_cast<TagType>(T))
-      return Visit(MakeCursorTypeRef(Tag->getDecl(), Range.getBegin(), TU));
-    if (const TemplateSpecializationType *TST =
-            dyn_cast<TemplateSpecializationType>(T))
-      return VisitTemplateName(TST->getTemplateName(), Range.getBegin());
-    break;
-  }
-
-  case NestedNameSpecifier::Global:
-  case NestedNameSpecifier::Identifier:
-  case NestedNameSpecifier::Super:
-    break;
-  }
-
-  return false;
-}
-
 bool CursorVisitor::VisitNestedNameSpecifierLoc(
     NestedNameSpecifierLoc Qualifier) {
   SmallVector<NestedNameSpecifierLoc, 4> Qualifiers;
@@ -1497,7 +1451,6 @@ bool CursorVisitor::VisitNestedNameSpecifierLoc(
       break;
 
     case NestedNameSpecifier::Global:
-    case NestedNameSpecifier::Identifier:
     case NestedNameSpecifier::Super:
       break;
     }

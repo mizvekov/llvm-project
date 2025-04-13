@@ -721,7 +721,7 @@ namespace testCanonicalTemplate {
   // CHECK-NEXT: |-TemplateTypeParmDecl 0x{{.+}} <col:16, col:25> col:25 referenced typename depth 0 index 0 T{{$}}
   // CHECK-NEXT: |-VarDecl 0x{{.+}} <col:28, col:43> col:43 TestVarTemplate 'const T' static{{$}}
   // CHECK-NEXT: |-VarTemplateSpecializationDecl 0x{{.+}} parent 0x{{.+}} prev 0x{{.+}} <line:[[@LINE-12]]:3, line:[[@LINE-11]]:34> col:14 referenced TestVarTemplate 'const int' implicit_instantiation cinit{{$}}
-  // CHECK-NEXT: | |-NestedNameSpecifier TypeSpec 'testCanonicalTemplate::S'{{$}}
+  // CHECK-NEXT: | |-NestedNameSpecifier TypeSpec 'S':'testCanonicalTemplate::S'{{$}}
   // CHECK-NEXT: | |-TemplateArgument type 'int'{{$}}
   // CHECK-NEXT: | | `-BuiltinType 0x{{.+}} 'int'{{$}}
   // CHECK-NEXT: | `-InitListExpr 0x{{.+}} <col:32, col:34> 'int'{{$}}
@@ -735,13 +735,13 @@ namespace testCanonicalTemplate {
   // CHECK:      VarTemplateDecl 0x{{.+}} parent 0x{{.+}} prev 0x{{.+}} <{{.+}}:[[@LINE-24]]:3, line:[[@LINE-23]]:34> col:14 TestVarTemplate{{$}}
   // CHECK-NEXT: |-TemplateTypeParmDecl 0x{{.+}} <line:[[@LINE-25]]:12, col:21> col:21 referenced typename depth 0 index 0 T{{$}}
   // CHECK-NEXT: |-VarDecl 0x{{.+}} parent 0x{{.+}} prev 0x{{.+}} <line:[[@LINE-25]]:3, col:34> col:14 TestVarTemplate 'const T' cinit{{$}}
-  // CHECK-NEXT: | |-NestedNameSpecifier TypeSpec 'testCanonicalTemplate::S'{{$}}
+  // CHECK-NEXT: | |-NestedNameSpecifier TypeSpec 'S':'testCanonicalTemplate::S'{{$}}
   // CHECK-NEXT: | `-InitListExpr 0x{{.+}} <col:32, col:34> 'void'{{$}}
   // CHECK-NEXT: |-VarTemplateSpecialization 0x{{.+}} 'TestVarTemplate' 'const int'{{$}}
   // CHECK-NEXT: `-VarTemplateSpecialization 0x{{.+}} 'TestVarTemplate' 'const int'{{$}}
 
   // CHECK:      VarTemplateSpecializationDecl 0x{{.+}} parent 0x{{.+}} prev 0x{{.+}} <{{.+}}:[[@LINE-32]]:3, line:[[@LINE-31]]:34> col:14 referenced TestVarTemplate 'const int' implicit_instantiation cinit{{$}}
-  // CHECK-NEXT: |-NestedNameSpecifier TypeSpec 'testCanonicalTemplate::S'{{$}}
+  // CHECK-NEXT: |-NestedNameSpecifier TypeSpec 'S':'testCanonicalTemplate::S'{{$}}
   // CHECK-NEXT: |-TemplateArgument type 'int'{{$}}
   // CHECK-NEXT: | `-BuiltinType 0x{{.+}} 'int'{{$}}
   // CHECK-NEXT: `-InitListExpr 0x{{.+}} <col:32, col:34> 'int'{{$}}

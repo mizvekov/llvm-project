@@ -2131,26 +2131,18 @@ static TemplateDeductionResult DeduceTemplateArgumentsByTypeMatch(
           Result != TemplateDeductionResult::Success)
         return Result;
 
-      QualType TP;
-      if (MPP->isSugared()) {
-        TP = S.Context.getTypeDeclType(MPP->getMostRecentCXXRecordDecl());
-      } else {
-        NestedNameSpecifier *QP = MPP->getQualifier();
-        if (QP->getKind() == NestedNameSpecifier::Identifier)
-          // Skip translation if it's a non-deduced context anyway.
-          return TemplateDeductionResult::Success;
-        TP = QualType(QP->translateToType(S.Context), 0);
-      }
+      QualType TP =
+          MPP->isSugared()
+              ? S.Context.getTypeDeclType(MPP->getMostRecentCXXRecordDecl())
+              : QualType(MPP->getQualifier()->getAsType(), 0);
       assert(!TP.isNull() && "member pointer with non-type class");
 
-      QualType TA;
-      if (MPA->isSugared()) {
-        TA = S.Context.getTypeDeclType(MPA->getMostRecentCXXRecordDecl());
-      } else {
-        NestedNameSpecifier *QA = MPA->getQualifier();
-        TA = QualType(QA->translateToType(S.Context), 0);
-      }
+      QualType TA =
+          MPA->isSugared()
+              ? S.Context.getTypeDeclType(MPA->getMostRecentCXXRecordDecl())
+              : QualType(MPA->getQualifier()->getAsType(), 0);
       assert(!TA.isNull() && "member pointer with non-type class");
+
       return DeduceTemplateArgumentsByTypeMatch(
           S, TemplateParams, TP, TA, Info, Deduced, SubTDF,
           degradeCallPartialOrderingKind(POK),

@@ -222,14 +222,11 @@ static bool hasRecursiveCallInPath(const FunctionDecl *FD, CFGBlock &Block) {
 
     // Skip function calls which are qualified with a templated class.
     if (const DeclRefExpr *DRE =
-            dyn_cast<DeclRefExpr>(CE->getCallee()->IgnoreParenImpCasts())) {
-      if (NestedNameSpecifier *NNS = DRE->getQualifier()) {
-        if (NNS->getKind() == NestedNameSpecifier::TypeSpec &&
-            isa<TemplateSpecializationType>(NNS->getAsType())) {
-          continue;
-        }
-      }
-    }
+            dyn_cast<DeclRefExpr>(CE->getCallee()->IgnoreParenImpCasts()))
+      if (NestedNameSpecifier *NNS = DRE->getQualifier())
+        if (auto *ET = dyn_cast_or_null<ElaboratedType>(NNS->getAsType()))
+          if (isa<TemplateSpecializationType>(ET->getNamedType()))
+            continue;
 
     const CXXMemberCallExpr *MCE = dyn_cast<CXXMemberCallExpr>(CE);
     if (!MCE || isa<CXXThisExpr>(MCE->getImplicitObjectArgument()) ||

@@ -4059,8 +4059,8 @@ QualType ASTContext::getMemberPointerType(QualType T,
                                           const CXXRecordDecl *Cls) const {
   if (!Qualifier) {
     assert(Cls && "At least one of Qualifier or Cls must be provided");
-    Qualifier = NestedNameSpecifier::Create(*this, /*Prefix=*/nullptr,
-                                            getTypeDeclType(Cls).getTypePtr());
+    Qualifier =
+        NestedNameSpecifier::Create(*this, getTypeDeclType(Cls).getTypePtr());
   } else if (!Cls) {
     Cls = Qualifier->getAsRecordDecl();
   }
@@ -4078,7 +4078,7 @@ QualType ASTContext::getMemberPointerType(QualType T,
     if (!Cls)
       return getCanonicalNestedNameSpecifier(Qualifier);
     NestedNameSpecifier *R = NestedNameSpecifier::Create(
-        *this, /*Prefix=*/nullptr, Cls->getCanonicalDecl()->getTypeForDecl());
+        *this, Cls->getCanonicalDecl()->getTypeForDecl());
     assert(R == getCanonicalNestedNameSpecifier(R));
     return R;
   }();
@@ -5684,6 +5684,8 @@ QualType ASTContext::getElaboratedType(ElaboratedTypeKeyword Keyword,
                                        NestedNameSpecifier *NNS,
                                        QualType NamedType,
                                        TagDecl *OwnedTagDecl) const {
+  assert(!isa<ElaboratedType>(NamedType));
+
   llvm::FoldingSetNodeID ID;
   ElaboratedType::Profile(ID, Keyword, NNS, NamedType, OwnedTagDecl);
 
@@ -7270,6 +7272,11 @@ static NamespaceDecl *getNamespace(const NestedNameSpecifier *X) {
 
 static bool isSameQualifier(const NestedNameSpecifier *X,
                             const NestedNameSpecifier *Y) {
+  if (X == Y)
+    return true;
+  if (!X || !Y)
+    return false;
+
   if (auto *NSX = getNamespace(X)) {
     auto *NSY = getNamespace(Y);
     if (!NSY || NSX->getCanonicalDecl() != NSY->getCanonicalDecl())
@@ -7280,30 +7287,23 @@ static bool isSameQualifier(const NestedNameSpecifier *X,
   // FIXME: For namespaces and types, we're permitted to check that the entity
   // is named via the same tokens. We should probably do so.
   switch (X->getKind()) {
-  case NestedNameSpecifier::Identifier:
-    if (X->getAsIdentifier() != Y->getAsIdentifier())
-      return false;
-    break;
   case NestedNameSpecifier::Namespace:
   case NestedNameSpecifier::NamespaceAlias:
     // We've already checked that we named the same namespace.
     break;
-  case NestedNameSpecifier::TypeSpec:
-    if (X->getAsType()->getCanonicalTypeInternal() !=
-        Y->getAsType()->getCanonicalTypeInternal())
+  case NestedNameSpecifier::TypeSpec: {
+    const auto *TX = X->getAsType(), *TY = Y->getAsType();
+    if (TX->getCanonicalTypeInternal() != TY->getCanonicalTypeInternal())
       return false;
-    break;
+    return isSameQualifier(TX->getPrefix(), TY->getPrefix());
+  }
   case NestedNameSpecifier::Global:
   case NestedNameSpecifier::Super:
     return true;
   }
 
   // Recurse into earlier portion of NNS, if any.
-  auto *PX = X->getPrefix();
-  auto *PY = Y->getPrefix();
-  if (PX && PY)
-    return isSameQualifier(PX, PY);
-  return !PX && !PY;
+  return isSameQualifier(X->getPrefix(), Y->getPrefix());
 }
 
 static bool hasSameCudaAttrs(const FunctionDecl *A, const FunctionDecl *B) {
@@ -7647,12 +7647,6 @@ ASTContext::getCanonicalNestedNameSpecifier(NestedNameSpecifier *NNS) const {
     return nullptr;
 
   switch (NNS->getKind()) {
-  case NestedNameSpecifier::Identifier:
-    // Canonicalize the prefix but keep the identifier the same.
-    return NestedNameSpecifier::Create(*this,
-                         getCanonicalNestedNameSpecifier(NNS->getPrefix()),
-                                       NNS->getAsIdentifier());
-
   case NestedNameSpecifier::Namespace:
     // A namespace is canonical; build a nested-name-specifier with
     // this namespace and no prefix.
@@ -7666,35 +7660,10 @@ ASTContext::getCanonicalNestedNameSpecifier(NestedNameSpecifier *NNS) const {
         *this, nullptr,
         NNS->getAsNamespaceAlias()->getNamespace()->getFirstDecl());
 
-  // The difference between TypeSpec and TypeSpecWithTemplate is that the
-  // latter will have the 'template' keyword when printed.
-  case NestedNameSpecifier::TypeSpec: {
-    const Type *T = getCanonicalType(NNS->getAsType());
-
-    // If we have some kind of dependent-named type (e.g., "typename T::type"),
-    // break it apart into its prefix and identifier, then reconsititute those
-    // as the canonical nested-name-specifier. This is required to canonicalize
-    // a dependent nested-name-specifier involving typedefs of dependent-name
-    // types, e.g.,
-    //   typedef typename T::type T1;
-    //   typedef typename T1::type T2;
-    if (const auto *DNT = T->getAs<DependentNameType>())
-      return NestedNameSpecifier::Create(*this, DNT->getQualifier(),
-                                         DNT->getIdentifier());
-    if (const auto *DTST = T->getAs<DependentTemplateSpecializationType>()) {
-      const DependentTemplateStorage &DTN = DTST->getDependentTemplateName();
-      QualType NewT = getDependentTemplateSpecializationType(
-          ElaboratedTypeKeyword::None,
-          {/*NNS=*/nullptr, DTN.getName(), /*HasTemplateKeyword=*/true},
-          DTST->template_arguments(), /*IsCanonical=*/true);
-      assert(NewT.isCanonical());
-      NestedNameSpecifier *Prefix = DTN.getQualifier();
-      if (!Prefix)
-        Prefix = getCanonicalNestedNameSpecifier(NNS->getPrefix());
-      return NestedNameSpecifier::Create(*this, Prefix, NewT.getTypePtr());
-    }
-    return NestedNameSpecifier::Create(*this, nullptr, T);
-  }
+  case NestedNameSpecifier::TypeSpec:
+    assert(NNS->getPrefix() == nullptr);
+    return NestedNameSpecifier::Create(*this,
+                                       getCanonicalType(NNS->getAsType()));
 
   case NestedNameSpecifier::Global:
   case NestedNameSpecifier::Super:
@@ -13554,17 +13523,6 @@ static NestedNameSpecifier *getCommonNNS(ASTContext &Ctx,
   NestedNameSpecifier *R = nullptr;
   NestedNameSpecifier::SpecifierKind K1 = NNS1->getKind(), K2 = NNS2->getKind();
   switch (K1) {
-  case NestedNameSpecifier::SpecifierKind::Identifier: {
-    assert(K2 == NestedNameSpecifier::SpecifierKind::Identifier);
-    IdentifierInfo *II = NNS1->getAsIdentifier();
-    assert(II == NNS2->getAsIdentifier());
-    // For an identifier, the prefixes are significant, so they must be the
-    // same.
-    NestedNameSpecifier *P = ::getCommonNNS(Ctx, NNS1->getPrefix(),
-                                            NNS2->getPrefix(), /*IsSame=*/true);
-    R = NestedNameSpecifier::Create(Ctx, P, II);
-    break;
-  }
   case NestedNameSpecifier::SpecifierKind::Namespace:
   case NestedNameSpecifier::SpecifierKind::NamespaceAlias: {
     assert(K2 == NestedNameSpecifier::SpecifierKind::Namespace ||
@@ -13593,62 +13551,11 @@ static NestedNameSpecifier *getCommonNNS(ASTContext &Ctx,
       return Ctx.getCanonicalNestedNameSpecifier(NNS1);
 
     assert(K2 == NestedNameSpecifier::SpecifierKind::TypeSpec);
-
     const Type *T1 = NNS1->getAsType(), *T2 = NNS2->getAsType();
-    if (T1 == T2) {
-      // If the types are indentical, then only the prefixes differ.
-      // A well-formed NNS never has these types, as they have
-      // special normalized forms.
-      assert((!isa<DependentNameType, ElaboratedType>(T1)));
-      // Only for a DependentTemplateSpecializationType the prefix
-      // is actually significant. A DependentName, which would be another
-      // plausible case, cannot occur here, as explained above.
-      bool IsSame = isa<DependentTemplateSpecializationType>(T1);
-      NestedNameSpecifier *P =
-          ::getCommonNNS(Ctx, NNS1->getPrefix(), NNS2->getPrefix(), IsSame);
-      R = NestedNameSpecifier::Create(Ctx, P, T1);
-      break;
-    }
-    // TODO: Try to salvage the original prefix.
-    // If getCommonSugaredType removed any top level sugar, the original prefix
-    // is not applicable anymore.
     const Type *T = Ctx.getCommonSugaredType(QualType(T1, 0), QualType(T2, 0),
                                              /*Unqualified=*/true)
                         .getTypePtr();
-
-    // A NestedNameSpecifier has special normalization rules for certain types.
-    switch (T->getTypeClass()) {
-    case Type::Elaborated: {
-      // An ElaboratedType is stripped off, it's Qualifier becomes the prefix.
-      auto *ET = cast<ElaboratedType>(T);
-      R = NestedNameSpecifier::Create(Ctx, ET->getQualifier(),
-                                      ET->getNamedType().getTypePtr());
-      break;
-    }
-    case Type::DependentName: {
-      // A DependentName is turned into an Identifier NNS.
-      auto *DN = cast<DependentNameType>(T);
-      R = NestedNameSpecifier::Create(Ctx, DN->getQualifier(),
-                                      DN->getIdentifier());
-      break;
-    }
-    case Type::DependentTemplateSpecialization: {
-      // A DependentTemplateSpecializationType loses it's Qualifier, which
-      // is turned into the prefix.
-      auto *DTST = cast<DependentTemplateSpecializationType>(T);
-      const DependentTemplateStorage &DTN = DTST->getDependentTemplateName();
-      DependentTemplateStorage NewDTN(/*Qualifier=*/nullptr, DTN.getName(),
-                                      DTN.hasTemplateKeyword());
-      T = Ctx.getDependentTemplateSpecializationType(DTST->getKeyword(), NewDTN,
-                                                     DTST->template_arguments())
-              .getTypePtr();
-      R = NestedNameSpecifier::Create(Ctx, DTN.getQualifier(), T);
-      break;
-    }
-    default:
-      R = NestedNameSpecifier::Create(Ctx, /*Prefix=*/nullptr, T);
-      break;
-    }
+    R = NestedNameSpecifier::Create(Ctx, T);
     break;
   }
   case NestedNameSpecifier::SpecifierKind::Super:

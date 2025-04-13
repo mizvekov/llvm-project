@@ -247,10 +247,6 @@ public:
       NestedNameSpecifier::SpecifierKind kind = NNS->getKind();
       asImpl().writeNestedNameSpecifierKind(kind);
       switch (kind) {
-      case NestedNameSpecifier::Identifier:
-        asImpl().writeIdentifier(NNS->getAsIdentifier());
-        continue;
-
       case NestedNameSpecifier::Namespace:
         asImpl().writeNamespaceDeclRef(NNS->getAsNamespace());
         continue;

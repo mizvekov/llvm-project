@@ -200,5 +200,5 @@ namespace member_pointers {
 
   // FIXME: adjusted MemberPointer does not preserve qualifier
   N t3 = 0 ? &W1::a : &W2::b;
-  // expected-error@-1 {{rvalue of type 'B1 W<void>::*'}}
+  // expected-error@-1 {{rvalue of type 'B1 member_pointers::W<void>::*'}}
 } // namespace member_pointers

@@ -1779,7 +1779,8 @@ void TypePrinter::printDependentNameBefore(const DependentNameType *T,
   if (T->getKeyword() != ElaboratedTypeKeyword::None)
     OS << " ";
 
-  T->getQualifier()->print(OS, Policy);
+  if (NestedNameSpecifier *NNS = T->getQualifier())
+    NNS->print(OS, Policy);
 
   OS << T->getIdentifier()->getName();
   spaceBeforePlaceHolder(OS);

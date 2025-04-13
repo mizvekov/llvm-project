@@ -262,7 +262,6 @@ void IndexingContext::indexNestedNameSpecifierLoc(NestedNameSpecifierLoc NNS,
   SourceLocation Loc = NNS.getLocalBeginLoc();
 
   switch (NNS.getNestedNameSpecifier()->getKind()) {
-  case NestedNameSpecifier::Identifier:
   case NestedNameSpecifier::Global:
   case NestedNameSpecifier::Super:
     break;

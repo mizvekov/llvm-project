@@ -255,7 +255,6 @@ public:
 
   // Name visitor
   bool VisitDeclarationNameInfo(DeclarationNameInfo Name);
-  bool VisitNestedNameSpecifier(NestedNameSpecifier *NNS, SourceRange Range);
   bool VisitNestedNameSpecifierLoc(NestedNameSpecifierLoc NNS);
 
   // Template visitors

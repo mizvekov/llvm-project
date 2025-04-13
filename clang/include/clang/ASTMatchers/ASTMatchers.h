@@ -7804,7 +7804,10 @@ AST_MATCHER_P(NestedNameSpecifier, specifiesType,
               internal::Matcher<QualType>, InnerMatcher) {
   if (!Node.getAsType())
     return false;
-  return InnerMatcher.matches(QualType(Node.getAsType(), 0), Finder, Builder);
+  QualType T(Node.getAsType(), 0);
+  if (const auto *ET = dyn_cast<ElaboratedType>(T))
+    T = ET->getNamedType();
+  return InnerMatcher.matches(T, Finder, Builder);
 }
 
 /// Matches nested name specifier locs that specify a type matching the
@@ -7820,8 +7823,14 @@ AST_MATCHER_P(NestedNameSpecifier, specifiesType,
 ///   matches "A::"
 AST_MATCHER_P(NestedNameSpecifierLoc, specifiesTypeLoc,
               internal::Matcher<TypeLoc>, InnerMatcher) {
-  return Node && Node.getNestedNameSpecifier()->getAsType() &&
-         InnerMatcher.matches(Node.getTypeLoc(), Finder, Builder);
+  if (!Node)
+    return false;
+  TypeLoc TL = Node.getTypeLoc();
+  if (!TL)
+    return false;
+  if (auto ETL = TL.getAs<ElaboratedTypeLoc>())
+    TL = ETL.getNamedTypeLoc();
+  return InnerMatcher.matches(TL, Finder, Builder);
 }
 
 /// Matches on the prefix of a \c NestedNameSpecifier.
@@ -7836,7 +7845,12 @@ AST_MATCHER_P(NestedNameSpecifierLoc, specifiesTypeLoc,
 AST_MATCHER_P_OVERLOAD(NestedNameSpecifier, hasPrefix,
                        internal::Matcher<NestedNameSpecifier>, InnerMatcher,
                        0) {
-  const NestedNameSpecifier *NextNode = Node.getPrefix();
+  const NestedNameSpecifier *NextNode;
+  if (const auto *T = Node.getAsType())
+    NextNode = T->getPrefix();
+  else
+    NextNode = Node.getPrefix();
+
   if (!NextNode)
     return false;
   return InnerMatcher.matches(*NextNode, Finder, Builder);
@@ -7854,7 +7868,12 @@ AST_MATCHER_P_OVERLOAD(NestedNameSpecifier, hasPrefix,
 AST_MATCHER_P_OVERLOAD(NestedNameSpecifierLoc, hasPrefix,
                        internal::Matcher<NestedNameSpecifierLoc>, InnerMatcher,
                        1) {
-  NestedNameSpecifierLoc NextNode = Node.getPrefix();
+  NestedNameSpecifierLoc NextNode;
+  if (TypeLoc TL = Node.getTypeLoc())
+    NextNode = TL.getPrefix();
+  else
+    NextNode = Node.getPrefix();
+
   if (!NextNode)
     return false;
   return InnerMatcher.matches(NextNode, Finder, Builder);

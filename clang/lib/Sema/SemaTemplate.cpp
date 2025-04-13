@@ -3769,8 +3769,10 @@ TypeResult Sema::ActOnTemplateIdType(
     //   elaborated-type-specifier (7.1.5.3).
     if (!LookupCtx && isDependentScopeSpecifier(SS)) {
       // C++2a relaxes some of those restrictions in [temp.res]p5.
+      QualType DNT = Context.getDependentNameType(ElaboratedTypeKeyword::None,
+                                                  SS.getScopeRep(), TemplateII);
       NestedNameSpecifier *NNS =
-          NestedNameSpecifier::Create(Context, SS.getScopeRep(), TemplateII);
+          NestedNameSpecifier::Create(Context, DNT.getTypePtr());
       if (AllowImplicitTypename == ImplicitTypenameContext::Yes) {
         if (getLangOpts().CPlusPlus20)
           Diag(SS.getBeginLoc(), diag::warn_cxx17_compat_implicit_typename);
@@ -6138,7 +6140,6 @@ bool UnnamedLocalNoLinkageFinder::VisitNestedNameSpecifier(
     return true;
 
   switch (NNS->getKind()) {
-  case NestedNameSpecifier::Identifier:
   case NestedNameSpecifier::Namespace:
   case NestedNameSpecifier::NamespaceAlias:
   case NestedNameSpecifier::Global:
@@ -7562,7 +7563,7 @@ ExprResult Sema::BuildExpressionFromDeclTemplateArgument(
     QualType ClassType
       = Context.getTypeDeclType(cast<RecordDecl>(VD->getDeclContext()));
     NestedNameSpecifier *Qualifier =
-        NestedNameSpecifier::Create(Context, nullptr, ClassType.getTypePtr());
+        NestedNameSpecifier::Create(Context, ClassType.getTypePtr());
     SS.MakeTrivial(Context, Qualifier, Loc);
   }
 
@@ -9725,9 +9726,13 @@ static bool ScopeSpecifierHasTemplateId(const CXXScopeSpec &SS) {
   // C++98 has the same restriction, just worded differently.
   for (NestedNameSpecifier *NNS = SS.getScopeRep(); NNS;
        NNS = NNS->getPrefix())
-    if (const Type *T = NNS->getAsType())
+    if (const Type *T = NNS->getAsType()) {
       if (isa<TemplateSpecializationType>(T))
         return true;
+      if (const auto *ET = dyn_cast<ElaboratedType>(T);
+          ET && isa<TemplateSpecializationType>(ET->getNamedType()))
+        return true;
+    }
 
   return false;
 }
@@ -10779,9 +10784,14 @@ static bool isEnableIf(NestedNameSpecifierLoc NNS, const IdentifierInfo &II,
   // ... within an explicitly-written template specialization...
   if (!NNS || !NNS.getNestedNameSpecifier()->getAsType())
     return false;
-  TypeLoc EnableIfTy = NNS.getTypeLoc();
-  TemplateSpecializationTypeLoc EnableIfTSTLoc =
-      EnableIfTy.getAs<TemplateSpecializationTypeLoc>();
+
+  // FIXME: Look through sugar.
+  auto ElTyLoc = NNS.getTypeLoc().getAs<ElaboratedTypeLoc>();
+  if (!ElTyLoc)
+    return false;
+
+  auto EnableIfTSTLoc =
+      ElTyLoc.getNamedTypeLoc().getAs<TemplateSpecializationTypeLoc>();
   if (!EnableIfTSTLoc || EnableIfTSTLoc.getNumArgs() == 0)
     return false;
   const TemplateSpecializationType *EnableIfTST = EnableIfTSTLoc.getTypePtr();

@@ -494,11 +494,6 @@ public:
     case NestedNameSpecifier::NamespaceAlias:
       add(NNS->getAsNamespaceAlias(), Flags);
       return;
-    case NestedNameSpecifier::Identifier:
-      if (Resolver) {
-        add(Resolver->resolveNestedNameSpecifierToType(NNS), Flags);
-      }
-      return;
     case NestedNameSpecifier::TypeSpec:
       add(QualType(NNS->getAsType(), 0), Flags);
       return;

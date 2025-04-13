@@ -4509,39 +4509,70 @@ static void checkCorrectionVisibility(Sema &SemaRef, TypoCorrection &TC) {
 static void getNestedNameSpecifierIdentifiers(
     NestedNameSpecifier *NNS,
     SmallVectorImpl<const IdentifierInfo*> &Identifiers) {
-  if (NestedNameSpecifier *Prefix = NNS->getPrefix())
-    getNestedNameSpecifierIdentifiers(Prefix, Identifiers);
-  else
+  if (!NNS) {
     Identifiers.clear();
-
-  const IdentifierInfo *II = nullptr;
+    return;
+  }
 
   switch (NNS->getKind()) {
-  case NestedNameSpecifier::Identifier:
-    II = NNS->getAsIdentifier();
-    break;
-
   case NestedNameSpecifier::Namespace:
+    getNestedNameSpecifierIdentifiers(NNS->getPrefix(), Identifiers);
     if (NNS->getAsNamespace()->isAnonymousNamespace())
       return;
-    II = NNS->getAsNamespace()->getIdentifier();
-    break;
+    Identifiers.push_back(NNS->getAsNamespace()->getIdentifier());
+    return;
 
   case NestedNameSpecifier::NamespaceAlias:
-    II = NNS->getAsNamespaceAlias()->getIdentifier();
-    break;
+    getNestedNameSpecifierIdentifiers(NNS->getPrefix(), Identifiers);
+    Identifiers.push_back(NNS->getAsNamespaceAlias()->getIdentifier());
+    return;
 
-  case NestedNameSpecifier::TypeSpec:
-    II = QualType(NNS->getAsType(), 0).getBaseTypeIdentifier();
+  case NestedNameSpecifier::TypeSpec: {
+    for (const Type *T = NNS->getAsType(); /**/; /**/) {
+      switch (T->getTypeClass()) {
+      case Type::Elaborated: {
+        auto *ET = cast<ElaboratedType>(T);
+        getNestedNameSpecifierIdentifiers(ET->getQualifier(), Identifiers);
+        Identifiers.push_back(ET->getNamedType().getBaseTypeIdentifier());
+        return;
+      }
+      case Type::DependentName: {
+        auto *DT = cast<DependentNameType>(T);
+        getNestedNameSpecifierIdentifiers(DT->getQualifier(), Identifiers);
+        Identifiers.push_back(DT->getIdentifier());
+        return;
+      }
+      case Type::DependentTemplateSpecialization: {
+        const DependentTemplateStorage &S =
+            cast<DependentTemplateSpecializationType>(T)
+                ->getDependentTemplateName();
+        getNestedNameSpecifierIdentifiers(S.getQualifier(), Identifiers);
+        // FIXME: Should this dig into the Name as well?
+        // Identifiers.push_back(S.getName().getIdentifier());
+        return;
+      }
+      case Type::SubstTemplateTypeParm:
+        T = cast<SubstTemplateTypeParmType>(T)
+                ->getReplacementType()
+                .getTypePtr();
+        continue;
+      case Type::TemplateTypeParm:
+        Identifiers.push_back(cast<TemplateTypeParmType>(T)->getIdentifier());
+        return;
+      case Type::Decltype:
+        return;
+      default:
+        T->dump();
+        llvm_unreachable("unexpected type in NNS");
+      }
+    }
     break;
+  }
 
   case NestedNameSpecifier::Global:
   case NestedNameSpecifier::Super:
     return;
   }
-
-  if (II)
-    Identifiers.push_back(II);
 }
 
 void TypoCorrectionConsumer::FoundDecl(NamedDecl *ND, NamedDecl *Hiding,
@@ -4673,7 +4704,9 @@ void TypoCorrectionConsumer::addNamespaces(
   if (NestedNameSpecifier *NNS =
           (SS && SS->isValid()) ? SS->getScopeRep() : nullptr) {
     if (const Type *T = NNS->getAsType())
-      SSIsTemplate = T->getTypeClass() == Type::TemplateSpecialization;
+      SSIsTemplate = T->getTypeClass() == Type::Elaborated &&
+                     cast<ElaboratedType>(T)->getNamedType()->getTypeClass() ==
+                         Type::TemplateSpecialization;
   }
   // Do not transform this into an iterator-based loop. The loop body can
   // trigger the creation of further types (through lazy deserialization) and
@@ -4895,7 +4928,9 @@ TypoCorrectionConsumer::NamespaceSpecifierSet::buildNestedNameSpecifier(
       NNS = NestedNameSpecifier::Create(Context, NNS, ND);
       ++NumSpecifiers;
     } else if (auto *RD = dyn_cast_or_null<RecordDecl>(C)) {
-      NNS = NestedNameSpecifier::Create(Context, NNS, RD->getTypeForDecl());
+      QualType ET = Context.getElaboratedType(
+          ElaboratedTypeKeyword::None, NNS, QualType(RD->getTypeForDecl(), 0));
+      NNS = NestedNameSpecifier::Create(Context, ET.getTypePtr());
       ++NumSpecifiers;
     }
   }

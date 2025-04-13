@@ -145,7 +145,6 @@ public:
       return true;
     case NestedNameSpecifier::TypeSpec:
     case NestedNameSpecifier::Super:
-    case NestedNameSpecifier::Identifier:
       return false;
     }
     llvm_unreachable("Unknown value for NestedNameSpecifierKind");

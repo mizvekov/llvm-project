@@ -469,9 +469,7 @@ public:
   void mangleVendorType(StringRef Name);
 
 private:
-
   bool mangleSubstitution(const NamedDecl *ND);
-  bool mangleSubstitution(NestedNameSpecifier *NNS);
   bool mangleSubstitution(QualType T);
   bool mangleSubstitution(TemplateName Template);
   bool mangleSubstitution(uintptr_t Ptr);
@@ -1337,6 +1335,21 @@ void CXXNameMangler::manglePrefix(QualType type) {
       mangleTemplateArgs(Template, DTST->template_arguments());
       addSubstitution(QualType(DTST, 0));
     }
+  } else if (const auto *DNT = type->getAs<DependentNameType>()) {
+    // Clang 14 and before did not consider this substitutable.
+    bool Clang14Compat = isCompatibleWith(LangOptions::ClangABI::Ver14);
+    if (!Clang14Compat && mangleSubstitution(QualType(DNT, 0)))
+      return;
+
+    // Member expressions can have these without prefixes, but that
+    // should end up in mangleUnresolvedPrefix instead.
+    assert(DNT->getQualifier());
+    manglePrefix(DNT->getQualifier());
+
+    mangleSourceName(DNT->getIdentifier());
+
+    if (!Clang14Compat)
+      addSubstitution(QualType(DNT, 0));
   } else {
     // We use the QualType mangle type variant here because it handles
     // substitutions.
@@ -1404,7 +1417,7 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     //   - a template type parameter
     //   - a template template parameter with arguments
     // In all of these cases, we should have no prefix.
-    if (NestedNameSpecifier *Prefix = qualifier->getPrefix()) {
+    if (NestedNameSpecifier *Prefix = type->getPrefix()) {
       mangleUnresolvedPrefix(Prefix,
                              /*recursive=*/true);
     } else {
@@ -1417,18 +1430,6 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
 
     break;
   }
-
-  case NestedNameSpecifier::Identifier:
-    // Member expressions can have these without prefixes.
-    if (qualifier->getPrefix())
-      mangleUnresolvedPrefix(qualifier->getPrefix(),
-                             /*recursive*/ true);
-    else
-      Out << "sr";
-
-    mangleSourceName(qualifier->getAsIdentifier());
-    // An Identifier has no type information, so we can't emit abi tags for it.
-    break;
   }
 
   // If this was the innermost part of the NNS, and we fell out to
@@ -2195,35 +2196,7 @@ void CXXNameMangler::manglePrefix(NestedNameSpecifier *qualifier) {
     return;
 
   case NestedNameSpecifier::TypeSpec:
-    if (NestedNameSpecifier *Prefix = qualifier->getPrefix()) {
-      const auto *DTST =
-          cast<DependentTemplateSpecializationType>(qualifier->getAsType());
-      QualType NewT = getASTContext().getDependentTemplateSpecializationType(
-          DTST->getKeyword(),
-          {Prefix, DTST->getDependentTemplateName().getName(),
-           /*HasTemplateKeyword=*/true},
-          DTST->template_arguments(), /*IsCanonical=*/true);
-      manglePrefix(NewT);
-      return;
-    }
     manglePrefix(QualType(qualifier->getAsType(), 0));
-    return;
-
-  case NestedNameSpecifier::Identifier:
-    // Clang 14 and before did not consider this substitutable.
-    bool Clang14Compat = isCompatibleWith(LangOptions::ClangABI::Ver14);
-    if (!Clang14Compat && mangleSubstitution(qualifier))
-      return;
-
-    // Member expressions can have these without prefixes, but that
-    // should end up in mangleUnresolvedPrefix instead.
-    assert(qualifier->getPrefix());
-    manglePrefix(qualifier->getPrefix());
-
-    mangleSourceName(qualifier->getAsIdentifier());
-
-    if (!Clang14Compat)
-      addSubstitution(qualifier);
     return;
   }
 
@@ -3887,12 +3860,9 @@ void CXXNameMangler::mangleType(const MemberPointerType *T) {
   if (auto *RD = T->getMostRecentCXXRecordDecl()) {
     mangleCXXRecordDecl(RD);
   } else {
-    NestedNameSpecifier *NNS = T->getQualifier();
-    if (auto *II = NNS->getAsIdentifier())
-      mangleType(getASTContext().getDependentNameType(
-          ElaboratedTypeKeyword::None, NNS->getPrefix(), II));
-    else
-      manglePrefix(NNS);
+    const Type *ClassType = T->getQualifier()->getAsType();
+    assert(ClassType && "member pointer with non-type class");
+    mangleType(QualType(ClassType, 0));
   }
   QualType PointeeType = T->getPointeeType();
   if (const FunctionProtoType *FPT = dyn_cast<FunctionProtoType>(PointeeType)) {
@@ -6975,14 +6945,6 @@ bool CXXNameMangler::mangleSubstitution(const NamedDecl *ND) {
 
   ND = cast<NamedDecl>(ND->getCanonicalDecl());
   return mangleSubstitution(reinterpret_cast<uintptr_t>(ND));
-}
-
-bool CXXNameMangler::mangleSubstitution(NestedNameSpecifier *NNS) {
-  assert(NNS->getKind() == NestedNameSpecifier::Identifier &&
-         "mangleSubstitution(NestedNameSpecifier *) is only used for "
-         "identifier nested name specifiers.");
-  NNS = Context.getASTContext().getCanonicalNestedNameSpecifier(NNS);
-  return mangleSubstitution(reinterpret_cast<uintptr_t>(NNS));
 }
 
 /// Determine whether the given type has any qualifiers that are relevant for

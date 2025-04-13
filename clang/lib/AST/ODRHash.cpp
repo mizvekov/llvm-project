@@ -118,9 +118,6 @@ void ODRHash::AddNestedNameSpecifier(const NestedNameSpecifier *NNS) {
   auto Kind = NNS->getKind();
   ID.AddInteger(Kind);
   switch (Kind) {
-  case NestedNameSpecifier::Identifier:
-    AddIdentifierInfo(NNS->getAsIdentifier());
-    break;
   case NestedNameSpecifier::Namespace:
     AddDecl(NNS->getAsNamespace());
     break;

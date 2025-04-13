@@ -9944,13 +9944,6 @@ ASTRecordReader::readNestedNameSpecifierLoc() {
   for (unsigned I = 0; I != N; ++I) {
     auto Kind = readNestedNameSpecifierKind();
     switch (Kind) {
-    case NestedNameSpecifier::Identifier: {
-      IdentifierInfo *II = readIdentifier();
-      SourceRange Range = readSourceRange();
-      Builder.Extend(Context, II, Range.getBegin(), Range.getEnd());
-      break;
-    }
-
     case NestedNameSpecifier::Namespace: {
       NamespaceDecl *NS = readDeclAs<NamespaceDecl>();
       SourceRange Range = readSourceRange();
@@ -9970,7 +9963,7 @@ ASTRecordReader::readNestedNameSpecifierLoc() {
       if (!T)
         return NestedNameSpecifierLoc();
       SourceLocation ColonColonLoc = readSourceLocation();
-      Builder.Extend(Context, T->getTypeLoc(), ColonColonLoc);
+      Builder.Make(Context, T->getTypeLoc(), ColonColonLoc);
       break;
     }
 

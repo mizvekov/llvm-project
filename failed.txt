@@ -1,0 +1,13 @@
+Failed Tests (12):
+  Clang Tools :: clang-tidy/checkers/modernize/type-traits.cpp
+  Clang Tools :: clang-tidy/checkers/modernize/use-constraints.cpp
+  Clang Tools :: clang-tidy/checkers/readability/static-accessed-through-instance-nesting-threshold.cpp
+  Clang Tools :: clang-tidy/checkers/readability/static-accessed-through-instance.cpp
+  Clangd Unit Tests :: ./ClangdTests/ClangdAST/GetQualification
+  Clangd Unit Tests :: ./ClangdTests/DefineInlineTest/TransformDeclRefs
+  Clangd Unit Tests :: ./ClangdTests/DefineInlineTest/TransformTypeLocs
+  Clangd Unit Tests :: ./ClangdTests/DefineOutlineTest/ApplyTest
+  Clangd Unit Tests :: ./ClangdTests/DefineOutlineTest/InCppFile
+  Clangd Unit Tests :: ./ClangdTests/DefineOutlineTest/QualifyFunctionName
+  Clangd Unit Tests :: ./ClangdTests/DefineOutlineTest/QualifyReturnValue
+  Clangd Unit Tests :: ./ClangdTests/SemanticHighlighting/GetsCorrectTokens

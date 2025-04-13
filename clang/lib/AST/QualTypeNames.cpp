@@ -226,15 +226,8 @@ static NestedNameSpecifier *getFullyQualifiedNestedNameSpecifier(
       // invalid at the end of the TU.  So use the namespace name more
       // likely to be valid at the end of the TU.
       return TypeName::createNestedNameSpecifier(
-          Ctx,
-          Scope->getAsNamespaceAlias()->getNamespace()->getCanonicalDecl(),
+          Ctx, Scope->getAsNamespaceAlias()->getNamespace()->getCanonicalDecl(),
           WithGlobalNsPrefix);
-    case NestedNameSpecifier::Identifier:
-      // A function or some other construct that makes it un-namable
-      // at the end of the TU. Skip the current component of the name,
-      // but use the name of it's prefix.
-      return getFullyQualifiedNestedNameSpecifier(
-          Ctx, Scope->getPrefix(), WithGlobalNsPrefix);
     case NestedNameSpecifier::TypeSpec: {
       const Type *Type = Scope->getAsType();
       // Find decl context.
@@ -365,9 +358,11 @@ NestedNameSpecifier *createNestedNameSpecifier(const ASTContext &Ctx,
 
     TypePtr = getFullyQualifiedTemplateType(Ctx, TypePtr, WithGlobalNsPrefix);
   }
-
-  return NestedNameSpecifier::Create(
-      Ctx, createOuterNNS(Ctx, TD, FullyQualify, WithGlobalNsPrefix), TypePtr);
+  QualType ET = Ctx.getElaboratedType(
+      ElaboratedTypeKeyword::None,
+      createOuterNNS(Ctx, TD, FullyQualify, WithGlobalNsPrefix),
+      QualType(TypePtr, 0));
+  return NestedNameSpecifier::Create(Ctx, ET.getTypePtr());
 }
 
 /// Return the fully qualified type, including fully-qualified

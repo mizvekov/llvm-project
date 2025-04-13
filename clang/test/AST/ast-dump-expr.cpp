@@ -219,13 +219,10 @@ void PostfixExpressions(S a, S *p, U<int> *r) {
   // CHECK-NEXT: MemberExpr 0x{{[^ ]*}} <col:3, col:5> '<bound member function type>' .~S 0x{{[^ ]*}}
   // CHECK-NEXT: DeclRefExpr 0x{{[^ ]*}} <col:3> 'S' lvalue ParmVar 0x{{[^ ]*}} 'a' 'S'
 
-  // FIXME: similarly, there is no way to distinguish the construct below from
-  // the p->~S() case.
   p->::S::~S();
   // CHECK: CXXMemberCallExpr 0x{{[^ ]*}} <line:[[@LINE-1]]:3, col:14> 'void'
   // CHECK-NEXT: MemberExpr 0x{{[^ ]*}} <col:3, col:12> '<bound member function type>' ->~S 0x{{[^ ]*}}
-  // CHECK-NEXT: NestedNameSpecifier TypeSpec 'S'
-  // CHECK-NEXT: NestedNameSpecifier Global
+  // CHECK-NEXT: NestedNameSpecifier TypeSpec '::S':'S'
   // CHECK-NEXT: ImplicitCastExpr
   // CHECK-NEXT: DeclRefExpr 0x{{[^ ]*}} <col:3> 'S *' lvalue ParmVar 0x{{[^ ]*}} 'p' 'S *'
 

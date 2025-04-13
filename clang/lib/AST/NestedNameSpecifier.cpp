@@ -53,27 +53,12 @@ NestedNameSpecifier::FindOrInsert(const ASTContext &Context,
   return NNS;
 }
 
-NestedNameSpecifier *NestedNameSpecifier::Create(const ASTContext &Context,
-                                                 NestedNameSpecifier *Prefix,
-                                                 const IdentifierInfo *II) {
-  assert(II && "Identifier cannot be NULL");
-  assert((!Prefix || Prefix->isDependent()) && "Prefix must be dependent");
-
-  NestedNameSpecifier Mockup;
-  Mockup.Prefix.setPointer(Prefix);
-  Mockup.Prefix.setInt(StoredIdentifier);
-  Mockup.Specifier = const_cast<IdentifierInfo *>(II);
-  return FindOrInsert(Context, Mockup);
-}
-
 NestedNameSpecifier *
 NestedNameSpecifier::Create(const ASTContext &Context,
                             NestedNameSpecifier *Prefix,
                             const NamespaceDecl *NS) {
   assert(NS && "Namespace cannot be NULL");
-  assert((!Prefix ||
-          (Prefix->getAsType() == nullptr &&
-           Prefix->getAsIdentifier() == nullptr)) &&
+  assert((!Prefix || Prefix->getAsType() == nullptr) &&
          "Broken nested name specifier");
   NestedNameSpecifier Mockup;
   Mockup.Prefix.setPointer(Prefix);
@@ -87,9 +72,7 @@ NestedNameSpecifier::Create(const ASTContext &Context,
                             NestedNameSpecifier *Prefix,
                             const NamespaceAliasDecl *Alias) {
   assert(Alias && "Namespace alias cannot be NULL");
-  assert((!Prefix ||
-          (Prefix->getAsType() == nullptr &&
-           Prefix->getAsIdentifier() == nullptr)) &&
+  assert((!Prefix || Prefix->getAsType() == nullptr) &&
          "Broken nested name specifier");
   NestedNameSpecifier Mockup;
   Mockup.Prefix.setPointer(Prefix);
@@ -99,23 +82,12 @@ NestedNameSpecifier::Create(const ASTContext &Context,
 }
 
 NestedNameSpecifier *NestedNameSpecifier::Create(const ASTContext &Context,
-                                                 NestedNameSpecifier *Prefix,
                                                  const Type *T) {
   assert(T && "Type cannot be NULL");
   NestedNameSpecifier Mockup;
-  Mockup.Prefix.setPointer(Prefix);
+  Mockup.Prefix.setPointer(nullptr);
   Mockup.Prefix.setInt(StoredTypeSpec);
   Mockup.Specifier = const_cast<Type*>(T);
-  return FindOrInsert(Context, Mockup);
-}
-
-NestedNameSpecifier *NestedNameSpecifier::Create(const ASTContext &Context,
-                                                 const IdentifierInfo *II) {
-  assert(II && "Identifier cannot be NULL");
-  NestedNameSpecifier Mockup;
-  Mockup.Prefix.setPointer(nullptr);
-  Mockup.Prefix.setInt(StoredIdentifier);
-  Mockup.Specifier = const_cast<IdentifierInfo *>(II);
   return FindOrInsert(Context, Mockup);
 }
 
@@ -142,10 +114,9 @@ NestedNameSpecifier::SpecifierKind NestedNameSpecifier::getKind() const {
     return Global;
 
   switch (Prefix.getInt()) {
-  case StoredIdentifier:
-    return Identifier;
-
   case StoredDecl: {
+    if (!Specifier)
+      return Global;
     NamedDecl *ND = static_cast<NamedDecl *>(Specifier);
     if (isa<CXXRecordDecl>(ND))
       return Super;
@@ -162,7 +133,7 @@ NestedNameSpecifier::SpecifierKind NestedNameSpecifier::getKind() const {
 /// Retrieve the namespace stored in this nested name specifier.
 NamespaceDecl *NestedNameSpecifier::getAsNamespace() const {
   if (Prefix.getInt() == StoredDecl)
-    return dyn_cast<NamespaceDecl>(static_cast<NamedDecl *>(Specifier));
+    return dyn_cast_or_null<NamespaceDecl>(static_cast<NamedDecl *>(Specifier));
 
   return nullptr;
 }
@@ -170,7 +141,8 @@ NamespaceDecl *NestedNameSpecifier::getAsNamespace() const {
 /// Retrieve the namespace alias stored in this nested name specifier.
 NamespaceAliasDecl *NestedNameSpecifier::getAsNamespaceAlias() const {
   if (Prefix.getInt() == StoredDecl)
-    return dyn_cast<NamespaceAliasDecl>(static_cast<NamedDecl *>(Specifier));
+    return dyn_cast_or_null<NamespaceAliasDecl>(
+        static_cast<NamedDecl *>(Specifier));
 
   return nullptr;
 }
@@ -178,11 +150,8 @@ NamespaceAliasDecl *NestedNameSpecifier::getAsNamespaceAlias() const {
 /// Retrieve the record declaration stored in this nested name specifier.
 CXXRecordDecl *NestedNameSpecifier::getAsRecordDecl() const {
   switch (Prefix.getInt()) {
-  case StoredIdentifier:
-    return nullptr;
-
   case StoredDecl:
-    return dyn_cast<CXXRecordDecl>(static_cast<NamedDecl *>(Specifier));
+    return dyn_cast_or_null<CXXRecordDecl>(static_cast<NamedDecl *>(Specifier));
 
   case StoredTypeSpec:
     return getAsType()->getAsCXXRecordDecl();
@@ -193,22 +162,13 @@ CXXRecordDecl *NestedNameSpecifier::getAsRecordDecl() const {
 
 NestedNameSpecifierDependence NestedNameSpecifier::getDependence() const {
   switch (getKind()) {
-  case Identifier: {
-    // Identifier specifiers always represent dependent types
-    auto F = NestedNameSpecifierDependence::Dependent |
-             NestedNameSpecifierDependence::Instantiation;
-    // Prefix can contain unexpanded template parameters.
-    if (getPrefix())
-      return F | getPrefix()->getDependence();
-    return F;
-  }
-
   case Namespace:
   case NamespaceAlias:
   case Global:
     return NestedNameSpecifierDependence::None;
 
   case Super: {
+    assert(getPrefix() == nullptr);
     CXXRecordDecl *RD = static_cast<CXXRecordDecl *>(Specifier);
     for (const auto &Base : RD->bases())
       if (Base.getType()->isDependentType())
@@ -218,12 +178,8 @@ NestedNameSpecifierDependence NestedNameSpecifier::getDependence() const {
   }
 
   case TypeSpec: {
-    NestedNameSpecifierDependence Dep =
-        toNestedNameSpecifierDependendence(getAsType()->getDependence());
-    if (NestedNameSpecifier *Prefix = getPrefix())
-      Dep |=
-          Prefix->getDependence() & ~NestedNameSpecifierDependence::Dependent;
-    return Dep;
+    assert(getPrefix() == nullptr);
+    return toNestedNameSpecifierDependence(getAsType()->getDependence());
   }
   }
   llvm_unreachable("Invalid NNS Kind!");
@@ -245,88 +201,38 @@ bool NestedNameSpecifier::containsErrors() const {
   return getDependence() & NestedNameSpecifierDependence::Error;
 }
 
-const Type *
-NestedNameSpecifier::translateToType(const ASTContext &Context) const {
-  NestedNameSpecifier *Prefix = getPrefix();
-  switch (getKind()) {
-  case SpecifierKind::Identifier:
-    return Context
-        .getDependentNameType(ElaboratedTypeKeyword::None, Prefix,
-                              getAsIdentifier())
-        .getTypePtr();
-  case SpecifierKind::TypeSpec: {
-    const Type *T = getAsType();
-    switch (T->getTypeClass()) {
-    case Type::DependentTemplateSpecialization: {
-      const auto *DT = cast<DependentTemplateSpecializationType>(T);
-      const DependentTemplateStorage &DTN = DT->getDependentTemplateName();
-      return Context
-          .getDependentTemplateSpecializationType(
-              ElaboratedTypeKeyword::None,
-              {Prefix, DTN.getName(), DTN.hasTemplateKeyword()},
-              DT->template_arguments())
-          .getTypePtr();
-    }
-    case Type::Record:
-    case Type::TemplateSpecialization:
-    case Type::Using:
-    case Type::Enum:
-    case Type::Typedef:
-    case Type::UnresolvedUsing:
-      return Context
-          .getElaboratedType(ElaboratedTypeKeyword::None, Prefix,
-                             QualType(T, 0))
-          .getTypePtr();
-    default:
-      assert(Prefix == nullptr && "unexpected type with elaboration");
-      return T;
-    }
-  }
-  case SpecifierKind::Global:
-  case SpecifierKind::Namespace:
-  case SpecifierKind::NamespaceAlias:
-  case SpecifierKind::Super:
-    // These are not representable as types.
-    return nullptr;
-  }
-  llvm_unreachable("Unhandled SpecifierKind enum");
-}
-
 /// Print this nested name specifier to the given output
 /// stream.
 void NestedNameSpecifier::print(raw_ostream &OS, const PrintingPolicy &Policy,
                                 bool ResolveTemplateArguments,
                                 bool PrintFinalScopeResOp) const {
-  if (getPrefix())
-    getPrefix()->print(OS, Policy);
-
-  switch (getKind()) {
-  case Identifier:
-    OS << getAsIdentifier()->getName();
-    break;
-
+  switch (auto Kind = getKind()) {
   case Namespace:
-    if (getAsNamespace()->isAnonymousNamespace())
-      return;
-
-    OS << getAsNamespace()->getName();
-    break;
-
   case NamespaceAlias:
+    if (getPrefix())
+      getPrefix()->print(OS, Policy);
+    if (Kind == Namespace) {
+      if (getAsNamespace()->isAnonymousNamespace())
+        return;
+      OS << getAsNamespace()->getName();
+      break;
+    }
     OS << getAsNamespaceAlias()->getName();
     break;
 
   case Global:
+    assert(getPrefix() == nullptr);
     OS << "::";
     return;
 
   case Super:
+    assert(getPrefix() == nullptr);
     OS << "__super";
     break;
 
   case TypeSpec: {
+    assert(getPrefix() == nullptr);
     PrintingPolicy InnerPolicy(Policy);
-    InnerPolicy.SuppressScope = true;
     InnerPolicy.SuppressTagKeyword = true;
     QualType(getAsType(), 0).print(OS, InnerPolicy);
     break;
@@ -365,7 +271,6 @@ NestedNameSpecifierLoc::getLocalDataLength(NestedNameSpecifier *Qualifier) {
     // Nothing more to add.
     break;
 
-  case NestedNameSpecifier::Identifier:
   case NestedNameSpecifier::Namespace:
   case NestedNameSpecifier::NamespaceAlias:
   case NestedNameSpecifier::Super:
@@ -428,7 +333,6 @@ SourceRange NestedNameSpecifierLoc::getLocalSourceRange() const {
   case NestedNameSpecifier::Global:
     return LoadSourceLocation(Data, Offset);
 
-  case NestedNameSpecifier::Identifier:
   case NestedNameSpecifier::Namespace:
   case NestedNameSpecifier::NamespaceAlias:
   case NestedNameSpecifier::Super:
@@ -558,25 +462,13 @@ operator=(const NestedNameSpecifierLocBuilder &Other) {
   return *this;
 }
 
-void NestedNameSpecifierLocBuilder::Extend(ASTContext &Context, TypeLoc TL,
-                                           SourceLocation ColonColonLoc) {
-  Representation =
-      NestedNameSpecifier::Create(Context, Representation, TL.getTypePtr());
+void NestedNameSpecifierLocBuilder::Make(ASTContext &Context, TypeLoc TL,
+                                         SourceLocation ColonColonLoc) {
+  assert(Representation == nullptr);
+  Representation = NestedNameSpecifier::Create(Context, TL.getTypePtr());
 
   // Push source-location info into the buffer.
   SavePointer(TL.getOpaqueData(), Buffer, BufferSize, BufferCapacity);
-  SaveSourceLocation(ColonColonLoc, Buffer, BufferSize, BufferCapacity);
-}
-
-void NestedNameSpecifierLocBuilder::Extend(ASTContext &Context,
-                                           IdentifierInfo *Identifier,
-                                           SourceLocation IdentifierLoc,
-                                           SourceLocation ColonColonLoc) {
-  Representation = NestedNameSpecifier::Create(Context, Representation,
-                                               Identifier);
-
-  // Push source-location info into the buffer.
-  SaveSourceLocation(IdentifierLoc, Buffer, BufferSize, BufferCapacity);
   SaveSourceLocation(ColonColonLoc, Buffer, BufferSize, BufferCapacity);
 }
 
@@ -637,25 +529,23 @@ void NestedNameSpecifierLocBuilder::MakeTrivial(ASTContext &Context,
   while (!Stack.empty()) {
     NestedNameSpecifier *NNS = Stack.pop_back_val();
     switch (NNS->getKind()) {
-      case NestedNameSpecifier::Identifier:
-      case NestedNameSpecifier::Namespace:
-      case NestedNameSpecifier::NamespaceAlias:
-        SaveSourceLocation(R.getBegin(), Buffer, BufferSize, BufferCapacity);
-        break;
+    case NestedNameSpecifier::Namespace:
+    case NestedNameSpecifier::NamespaceAlias:
+      SaveSourceLocation(R.getBegin(), Buffer, BufferSize, BufferCapacity);
+      break;
 
-      case NestedNameSpecifier::TypeSpec: {
-        TypeSourceInfo *TSInfo
-        = Context.getTrivialTypeSourceInfo(QualType(NNS->getAsType(), 0),
-                                           R.getBegin());
-        SavePointer(TSInfo->getTypeLoc().getOpaqueData(), Buffer, BufferSize,
-                    BufferCapacity);
-        break;
-      }
+    case NestedNameSpecifier::TypeSpec: {
+      TypeSourceInfo *TSInfo = Context.getTrivialTypeSourceInfo(
+          QualType(NNS->getAsType(), 0), R.getBegin());
+      SavePointer(TSInfo->getTypeLoc().getOpaqueData(), Buffer, BufferSize,
+                  BufferCapacity);
+      break;
+    }
 
       case NestedNameSpecifier::Global:
       case NestedNameSpecifier::Super:
         break;
-    }
+      }
 
     // Save the location of the '::'.
     SaveSourceLocation(Stack.empty()? R.getEnd() : R.getBegin(),

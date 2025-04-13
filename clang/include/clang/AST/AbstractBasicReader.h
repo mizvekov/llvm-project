@@ -263,11 +263,6 @@ public:
     for (uint32_t i = 0; i != depth; ++i) {
       auto kind = asImpl().readNestedNameSpecifierKind();
       switch (kind) {
-      case NestedNameSpecifier::Identifier:
-        cur = NestedNameSpecifier::Create(ctx, cur,
-                                          asImpl().readIdentifier());
-        continue;
-
       case NestedNameSpecifier::Namespace:
         cur = NestedNameSpecifier::Create(ctx, cur,
                                           asImpl().readNamespaceDeclRef());
@@ -279,7 +274,8 @@ public:
         continue;
 
       case NestedNameSpecifier::TypeSpec:
-        cur = NestedNameSpecifier::Create(ctx, cur,
+        assert(cur == nullptr);
+        cur = NestedNameSpecifier::Create(ctx,
                                           asImpl().readQualType().getTypePtr());
         continue;
 

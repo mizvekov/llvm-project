@@ -253,7 +253,7 @@ static ParsedType recoverFromTypeInKnownDependentBase(Sema &S,
 
   ASTContext &Context = S.Context;
   auto *NNS = NestedNameSpecifier::Create(
-      Context, nullptr, cast<Type>(Context.getRecordType(RD)));
+      Context, cast<Type>(Context.getRecordType(RD)));
   QualType T =
       Context.getDependentNameType(ElaboratedTypeKeyword::None, NNS, &II);
 
@@ -347,11 +347,13 @@ ParsedType Sema::getTypeName(const IdentifierInfo &II, SourceLocation NameLoc,
           if (AllowImplicitTypename == ImplicitTypenameContext::No)
             return nullptr;
           SourceLocation QualifiedLoc = SS->getRange().getBegin();
+          // FIXME: Defer the diagnostic after we build the type and use it.
           if (getLangOpts().CPlusPlus20)
             Diag(QualifiedLoc, diag::warn_cxx17_compat_implicit_typename);
           else
             Diag(QualifiedLoc, diag::ext_implicit_typename)
-                << NestedNameSpecifier::Create(Context, SS->getScopeRep(), &II)
+                << Context.getDependentNameType(ElaboratedTypeKeyword::None,
+                                                SS->getScopeRep(), &II)
                 << FixItHint::CreateInsertion(QualifiedLoc, "typename ");
         }
 
@@ -581,8 +583,7 @@ synthesizeCurrentNestedNameSpecifier(ASTContext &Context, DeclContext *DC) {
     if (ND && !ND->isInline() && !ND->isAnonymousNamespace())
       return NestedNameSpecifier::Create(Context, nullptr, ND);
     if (auto *RD = dyn_cast<CXXRecordDecl>(DC))
-      return NestedNameSpecifier::Create(Context, nullptr,
-                                         RD->getTypeForDecl());
+      return NestedNameSpecifier::Create(Context, RD->getTypeForDecl());
     if (isa<TranslationUnitDecl>(DC))
       return NestedNameSpecifier::GlobalSpecifier(Context);
   }
@@ -624,7 +625,7 @@ ParsedType Sema::ActOnMSVCUnknownTypeName(const IdentifierInfo &II,
                  findRecordWithDependentBasesOfEnclosingMethod(CurContext)) {
     // Build a DependentNameType that will perform lookup into RD at
     // instantiation time.
-    NNS = NestedNameSpecifier::Create(Context, nullptr, RD->getTypeForDecl());
+    NNS = NestedNameSpecifier::Create(Context, RD->getTypeForDecl());
 
     // Diagnose that this identifier was undeclared, and retry the lookup during
     // template instantiation.
@@ -793,12 +794,13 @@ void Sema::DiagnoseUnknownTypeName(IdentifierInfo *&II,
     if (getLangOpts().MSVCCompat && isMicrosoftMissingTypename(SS, S))
       DiagID = diag::ext_typename_missing;
 
+    SuggestedType =
+        ActOnTypenameType(S, SourceLocation(), *SS, *II, IILoc).get();
+
     Diag(SS->getRange().getBegin(), DiagID)
-        << NestedNameSpecifier::Create(Context, SS->getScopeRep(), II)
+        << GetTypeFromParser(SuggestedType)
         << SourceRange(SS->getRange().getBegin(), IILoc)
         << FixItHint::CreateInsertion(SS->getRange().getBegin(), "typename ");
-    SuggestedType = ActOnTypenameType(S, SourceLocation(),
-                                      *SS, *II, IILoc).get();
   } else {
     assert(SS && SS->isInvalid() &&
            "Invalid scope specifier has already been diagnosed");
@@ -6256,36 +6258,52 @@ bool Sema::diagnoseQualifiedDeclaration(CXXScopeSpec &SS, DeclContext *DC,
         << FixItHint::CreateRemoval(TemplateId->TemplateKWLoc);
 
   NestedNameSpecifierLoc SpecLoc(SS.getScopeRep(), SS.location_data());
-  do {
-    if (TypeLoc TL = SpecLoc.getTypeLoc()) {
-      if (SourceLocation TemplateKeywordLoc = TL.getTemplateKeywordLoc();
-          TemplateKeywordLoc.isValid())
-        Diag(Loc, diag::ext_template_after_declarative_nns)
-            << FixItHint::CreateRemoval(TemplateKeywordLoc);
-    }
-
-    if (const Type *T = SpecLoc.getNestedNameSpecifier()->getAsType()) {
-      if (const auto *TST = T->getAsAdjusted<TemplateSpecializationType>()) {
-        // C++23 [expr.prim.id.qual]p3:
-        //   [...] If a nested-name-specifier N is declarative and has a
-        //   simple-template-id with a template argument list A that involves a
-        //   template parameter, let T be the template nominated by N without A.
-        //   T shall be a class template.
-        if (TST->isDependentType() && TST->isTypeAlias())
+  for (TypeLoc TL = SpecLoc.getTypeLoc(), NextTL; TL;
+       TL = std::exchange(NextTL, TypeLoc())) {
+    SourceLocation TemplateKeywordLoc;
+    switch (TL.getTypeLocClass()) {
+    case TypeLoc::Elaborated: {
+      auto ET = TL.castAs<ElaboratedTypeLoc>();
+      NextTL = ET.getNextTypeLoc();
+      if (auto TST =
+              ET.getNamedTypeLoc().getAs<TemplateSpecializationTypeLoc>()) {
+        TemplateKeywordLoc = TST.getTemplateKeywordLoc();
+        auto *T = TST.getTypePtr();
+        if (T->isDependentType() && T->isTypeAlias())
           Diag(Loc, diag::ext_alias_template_in_declarative_nns)
-              << SpecLoc.getLocalSourceRange();
-      } else if (T->isDecltypeType() || T->getAsAdjusted<PackIndexingType>()) {
-        // C++23 [expr.prim.id.qual]p2:
-        //   [...] A declarative nested-name-specifier shall not have a
-        //   computed-type-specifier.
-        //
-        // CWG2858 changed this from 'decltype-specifier' to
-        // 'computed-type-specifier'.
-        Diag(Loc, diag::err_computed_type_in_declarative_nns)
-            << T->isDecltypeType() << SpecLoc.getTypeLoc().getSourceRange();
+              << TST.getLocalSourceRange();
       }
+      break;
     }
-  } while ((SpecLoc = SpecLoc.getPrefix()));
+    case TypeLoc::Decltype:
+    case TypeLoc::PackIndexing: {
+      const Type *T = TL.getTypePtr();
+      // C++23 [expr.prim.id.qual]p2:
+      //   [...] A declarative nested-name-specifier shall not have a
+      //   computed-type-specifier.
+      //
+      // CWG2858 changed this from 'decltype-specifier' to
+      // 'computed-type-specifier'.
+      Diag(Loc, diag::err_computed_type_in_declarative_nns)
+          << T->isDecltypeType() << TL.getSourceRange();
+      break;
+    }
+    case TypeLoc::DependentName:
+      NextTL = TL.castAs<DependentNameTypeLoc>().getQualifierLoc().getTypeLoc();
+      break;
+    case TypeLoc::DependentTemplateSpecialization: {
+      auto TST = TL.castAs<DependentTemplateSpecializationTypeLoc>();
+      TemplateKeywordLoc = TST.getTemplateKeywordLoc();
+      NextTL = TST.getQualifierLoc().getTypeLoc();
+      break;
+    }
+    default:
+      break;
+    }
+    if (TemplateKeywordLoc.isValid())
+      Diag(Loc, diag::ext_template_after_declarative_nns)
+          << FixItHint::CreateRemoval(TemplateKeywordLoc);
+  }
 
   return false;
 }

@@ -252,15 +252,24 @@ using ::TestUsingShadowDeclType;
 // CHECK-NEXT:    "inner": [
 // CHECK-NEXT:     {
 // CHECK-NEXT:      "id": "0x{{.*}}",
-// CHECK-NEXT:      "kind": "RecordType",
+// CHECK-NEXT:      "kind": "ElaboratedType",
 // CHECK-NEXT:      "type": {
 // CHECK-NEXT:       "qualType": "T"
 // CHECK-NEXT:      },
-// CHECK-NEXT:      "decl": {
-// CHECK-NEXT:       "id": "0x{{.*}}",
-// CHECK-NEXT:       "kind": "CXXRecordDecl",
-// CHECK-NEXT:       "name": "T"
-// CHECK-NEXT:      }
+// CHECK-NEXT:      "inner": [
+// CHECK-NEXT:       {
+// CHECK-NEXT:        "id": "0x{{.*}}",
+// CHECK-NEXT:        "kind": "RecordType",
+// CHECK-NEXT:        "type": {
+// CHECK-NEXT:         "qualType": "T"
+// CHECK-NEXT:        },
+// CHECK-NEXT:        "decl": {
+// CHECK-NEXT:         "id": "0x{{.*}}",
+// CHECK-NEXT:         "kind": "CXXRecordDecl",
+// CHECK-NEXT:         "name": "T"
+// CHECK-NEXT:        }
+// CHECK-NEXT:       }
+// CHECK-NEXT:      ]
 // CHECK-NEXT:     },
 // CHECK-NEXT:     {
 // CHECK-NEXT:      "id": "0x{{.*}}",
@@ -330,15 +339,24 @@ using ::TestUsingShadowDeclType;
 // CHECK-NEXT:    "inner": [
 // CHECK-NEXT:     {
 // CHECK-NEXT:      "id": "0x{{.*}}",
-// CHECK-NEXT:      "kind": "RecordType",
+// CHECK-NEXT:      "kind": "ElaboratedType",
 // CHECK-NEXT:      "type": {
 // CHECK-NEXT:       "qualType": "T"
 // CHECK-NEXT:      },
-// CHECK-NEXT:      "decl": {
-// CHECK-NEXT:       "id": "0x{{.*}}",
-// CHECK-NEXT:       "kind": "CXXRecordDecl",
-// CHECK-NEXT:       "name": "T"
-// CHECK-NEXT:      }
+// CHECK-NEXT:      "inner": [
+// CHECK-NEXT:       {
+// CHECK-NEXT:        "id": "0x{{.*}}",
+// CHECK-NEXT:        "kind": "RecordType",
+// CHECK-NEXT:        "type": {
+// CHECK-NEXT:         "qualType": "T"
+// CHECK-NEXT:        },
+// CHECK-NEXT:        "decl": {
+// CHECK-NEXT:         "id": "0x{{.*}}",
+// CHECK-NEXT:         "kind": "CXXRecordDecl",
+// CHECK-NEXT:         "name": "T"
+// CHECK-NEXT:        }
+// CHECK-NEXT:       }
+// CHECK-NEXT:      ]
 // CHECK-NEXT:     },
 // CHECK-NEXT:     {
 // CHECK-NEXT:      "id": "0x{{.*}}",

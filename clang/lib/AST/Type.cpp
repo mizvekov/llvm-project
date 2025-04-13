@@ -106,6 +106,8 @@ bool Qualifiers::isTargetAddressSpaceSupersetOf(LangAS A, LangAS B,
 const IdentifierInfo* QualType::getBaseTypeIdentifier() const {
   const Type* ty = getTypePtr();
   NamedDecl *ND = nullptr;
+  if (const auto *DNT = ty->getAs<DependentNameType>())
+    return DNT->getIdentifier();
   if (ty->isPointerOrReferenceType())
     return ty->getPointeeType().getBaseTypeIdentifier();
   else if (ty->isRecordType())
@@ -1944,6 +1946,21 @@ Type::getAsNonAliasTemplateSpecializationType() const {
   while (TST && TST->isTypeAlias())
     TST = TST->desugar()->getAs<TemplateSpecializationType>();
   return TST;
+}
+
+NestedNameSpecifier *Type::getPrefix() const {
+  switch (getTypeClass()) {
+  case Type::Elaborated:
+    return cast<ElaboratedType>(this)->getQualifier();
+  case Type::DependentName:
+    return cast<DependentNameType>(this)->getQualifier();
+  case Type::DependentTemplateSpecialization:
+    return cast<DependentTemplateSpecializationType>(this)
+        ->getDependentTemplateName()
+        .getQualifier();
+  default:
+    return nullptr;
+  }
 }
 
 bool Type::hasAttr(attr::Kind AK) const {

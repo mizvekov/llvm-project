@@ -3655,9 +3655,13 @@ static void warnAboutRedundantParens(Sema &S, Declarator &D, QualType T) {
     // formally unambiguous.
     if (StartsWithDeclaratorId && D.getCXXScopeSpec().isValid()) {
       for (NestedNameSpecifier *NNS = D.getCXXScopeSpec().getScopeRep(); NNS;
-           NNS = NNS->getPrefix()) {
+           /**/) {
         if (NNS->getKind() == NestedNameSpecifier::Global)
           return;
+        if (const auto *T = NNS->getAsType())
+          NNS = T->getPrefix();
+        else
+          NNS = NNS->getPrefix();
       }
     }
 

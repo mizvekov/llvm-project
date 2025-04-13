@@ -783,19 +783,36 @@ bool RecursiveASTVisitor<Derived>::TraverseNestedNameSpecifier(
   if (!NNS)
     return true;
 
-  if (NNS->getPrefix())
-    TRY_TO(TraverseNestedNameSpecifier(NNS->getPrefix()));
-
   switch (NNS->getKind()) {
-  case NestedNameSpecifier::Identifier:
   case NestedNameSpecifier::Namespace:
   case NestedNameSpecifier::NamespaceAlias:
+    if (NestedNameSpecifier *Prefix = NNS->getPrefix())
+      TRY_TO(TraverseNestedNameSpecifier(Prefix));
+    return true;
   case NestedNameSpecifier::Global:
   case NestedNameSpecifier::Super:
     return true;
 
-  case NestedNameSpecifier::TypeSpec:
-    TRY_TO(TraverseType(QualType(NNS->getAsType(), 0)));
+  case NestedNameSpecifier::TypeSpec: {
+    const auto *T = NNS->getAsType();
+    if (NestedNameSpecifier *Prefix = T->getPrefix())
+      TRY_TO(TraverseNestedNameSpecifier(Prefix));
+    switch (T->getTypeClass()) {
+    case Type::Elaborated:
+      TRY_TO(TraverseType(cast<ElaboratedType>(T)->getNamedType()));
+      return true;
+    case Type::DependentName:
+      return true;
+    case Type::DependentTemplateSpecialization: {
+      TRY_TO(TraverseTemplateArguments(
+          cast<DependentTemplateSpecializationType>(T)->template_arguments()));
+      return true;
+    }
+    default:
+      TRY_TO(TraverseType(QualType(T, 0)));
+      return true;
+    }
+  }
   }
 
   return true;
@@ -807,20 +824,38 @@ bool RecursiveASTVisitor<Derived>::TraverseNestedNameSpecifierLoc(
   if (!NNS)
     return true;
 
-  if (NestedNameSpecifierLoc Prefix = NNS.getPrefix())
-    TRY_TO(TraverseNestedNameSpecifierLoc(Prefix));
-
   switch (NNS.getNestedNameSpecifier()->getKind()) {
-  case NestedNameSpecifier::Identifier:
   case NestedNameSpecifier::Namespace:
   case NestedNameSpecifier::NamespaceAlias:
+    if (NestedNameSpecifierLoc Prefix = NNS.getPrefix())
+      TRY_TO(TraverseNestedNameSpecifierLoc(Prefix));
+    return true;
   case NestedNameSpecifier::Global:
   case NestedNameSpecifier::Super:
     return true;
 
-  case NestedNameSpecifier::TypeSpec:
-    TRY_TO(TraverseTypeLoc(NNS.getTypeLoc()));
-    break;
+  case NestedNameSpecifier::TypeSpec: {
+    TypeLoc TL = NNS.getTypeLoc();
+    if (NestedNameSpecifierLoc Prefix = TL.getPrefix())
+      TRY_TO(TraverseNestedNameSpecifierLoc(Prefix));
+
+    switch (TL.getTypeLocClass()) {
+    case TypeLoc::Elaborated:
+      TRY_TO(TraverseTypeLoc(TL.castAs<ElaboratedTypeLoc>().getNamedTypeLoc()));
+      return true;
+    case TypeLoc::DependentName:
+      return true;
+    case TypeLoc::DependentTemplateSpecialization: {
+      auto DTL = TL.castAs<DependentTemplateSpecializationTypeLoc>();
+      for (unsigned I = 0, E = DTL.getNumArgs(); I != E; ++I)
+        TRY_TO(TraverseTemplateArgumentLoc(DTL.getArgLoc(I)));
+      return true;
+    }
+    default:
+      TRY_TO(TraverseTypeLoc(TL));
+      return true;
+    }
+  }
   }
 
   return true;

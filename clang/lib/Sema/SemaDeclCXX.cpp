@@ -14938,10 +14938,10 @@ buildSingleCopyAssignRecursively(Sema &S, SourceLocation Loc, QualType T,
     // reference to operator=; this is required to suppress the virtual
     // call mechanism.
     CXXScopeSpec SS;
+    // FIXME: Don't canonicalize this.
     const Type *CanonicalT = S.Context.getCanonicalType(T.getTypePtr());
     SS.MakeTrivial(S.Context,
-                   NestedNameSpecifier::Create(S.Context, nullptr, CanonicalT),
-                   Loc);
+                   NestedNameSpecifier::Create(S.Context, CanonicalT), Loc);
 
     // Create the reference to operator=.
     ExprResult OpEqualRef

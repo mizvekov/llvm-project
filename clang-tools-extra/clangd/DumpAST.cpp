@@ -154,7 +154,6 @@ class DumpVisitor : public RecursiveASTVisitor<DumpVisitor> {
 #define NNS_KIND(X)                                                            \
   case NestedNameSpecifier::X:                                                 \
     return #X
-      NNS_KIND(Identifier);
       NNS_KIND(Namespace);
       NNS_KIND(TypeSpec);
       NNS_KIND(Global);
@@ -278,8 +277,6 @@ class DumpVisitor : public RecursiveASTVisitor<DumpVisitor> {
   std::string getDetail(const NestedNameSpecifierLoc &NNSL) {
     const auto &NNS = *NNSL.getNestedNameSpecifier();
     switch (NNS.getKind()) {
-    case NestedNameSpecifier::Identifier:
-      return NNS.getAsIdentifier()->getName().str() + "::";
     case NestedNameSpecifier::Namespace:
       return NNS.getAsNamespace()->getNameAsString() + "::";
     case NestedNameSpecifier::NamespaceAlias:

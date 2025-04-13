@@ -1134,7 +1134,7 @@ public:
   // them here.
   bool TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc Q) {
     if (NestedNameSpecifier *NNS = Q.getNestedNameSpecifier()) {
-      if (NNS->getKind() == NestedNameSpecifier::Identifier)
+      if (isa_and_nonnull<DependentNameType>(NNS->getAsType()))
         H.addToken(Q.getLocalBeginLoc(), HighlightingKind::Type)
             .addModifier(HighlightingModifier::DependentName)
             .addModifier(HighlightingModifier::ClassScope);

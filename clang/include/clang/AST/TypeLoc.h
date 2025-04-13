@@ -193,6 +193,11 @@ public:
   /// Get the SourceLocation of the template keyword (if any).
   SourceLocation getTemplateKeywordLoc() const;
 
+  /// If this type represents a qualified-id, this returns it's nested name
+  /// specifier. For example, for the qualified-id "foo::bar::baz", this returns
+  /// "foo::bar". Returns null if this type represents an unqualified-id.
+  NestedNameSpecifierLoc getPrefix() const;
+
   /// Initializes this to state that every location in this
   /// type is the given location.
   ///

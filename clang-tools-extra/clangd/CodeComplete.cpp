@@ -1467,8 +1467,6 @@ bool allowIndex(CodeCompletionContext &CC) {
     return true;
   case NestedNameSpecifier::Super:
   case NestedNameSpecifier::TypeSpec:
-  // Unresolved inside a template.
-  case NestedNameSpecifier::Identifier:
     return false;
   }
   llvm_unreachable("invalid NestedNameSpecifier kind");
