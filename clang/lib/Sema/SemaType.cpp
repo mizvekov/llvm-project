@@ -5935,16 +5935,9 @@ namespace {
       }
 
       TypeLoc OldTL = TInfo->getTypeLoc();
-      if (TInfo->getType()->getAs<ElaboratedType>()) {
-        ElaboratedTypeLoc ElabTL = OldTL.castAs<ElaboratedTypeLoc>();
-        TemplateSpecializationTypeLoc NamedTL = ElabTL.getNamedTypeLoc()
-            .castAs<TemplateSpecializationTypeLoc>();
-        TL.copy(NamedTL);
-      } else {
-        TL.copy(OldTL.castAs<TemplateSpecializationTypeLoc>());
-        assert(TL.getRAngleLoc() == OldTL.castAs<TemplateSpecializationTypeLoc>().getRAngleLoc());
-      }
-
+      TL.copy(OldTL.castAs<TemplateSpecializationTypeLoc>());
+      assert(TL.getRAngleLoc() ==
+             OldTL.castAs<TemplateSpecializationTypeLoc>().getRAngleLoc());
     }
     void VisitTypeOfExprTypeLoc(TypeOfExprTypeLoc TL) {
       assert(DS.getTypeSpecType() == DeclSpec::TST_typeofExpr ||

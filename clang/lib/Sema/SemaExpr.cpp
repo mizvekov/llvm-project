@@ -21138,16 +21138,16 @@ ExprResult Sema::CheckPlaceholderExpr(Expr *E) {
     QualType TST;
     {
       SFINAETrap Trap(*this);
-      TST = CheckTemplateIdType(TN, NameInfo.getBeginLoc(), TAL);
+      TST = CheckTemplateIdType(ElaboratedTypeKeyword::None, TN,
+                                NameInfo.getBeginLoc(), TAL);
     }
     if (TST.isNull())
       TST = Context.getTemplateSpecializationType(
-          TN, ULE->template_arguments(), /*CanonicalArgs=*/std::nullopt,
+          ElaboratedTypeKeyword::None, TN, ULE->template_arguments(),
+          /*CanonicalArgs=*/std::nullopt,
           HasAnyDependentTA ? Context.DependentTy : Context.IntTy);
-    QualType ET =
-        Context.getElaboratedType(ElaboratedTypeKeyword::None, NNS, TST);
     return CreateRecoveryExpr(NameInfo.getBeginLoc(), NameInfo.getEndLoc(), {},
-                              ET);
+                              TST);
   }
 
   // Overloaded expressions.

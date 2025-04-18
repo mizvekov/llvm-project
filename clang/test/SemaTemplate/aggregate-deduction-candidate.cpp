@@ -77,11 +77,10 @@ namespace Basic {
   // CHECK: FunctionProtoType {{.*}} 'auto (S<T>, T) -> C<T>' dependent trailing_return cdecl
   // CHECK: |-InjectedClassNameType {{.*}} 'C<T>' dependent
   // CHECK: | `-CXXRecord {{.*}} 'C'
-  // CHECK: |-ElaboratedType {{.*}} 'S<T>' sugar dependent
-  // CHECK: | `-TemplateSpecializationType {{.*}} 'S<T>' dependent
-  // CHECK: |   `-TemplateArgument type 'T'
-  // CHECK: |     `-TemplateTypeParmType {{.*}} 'T' dependent depth 0 index 0
-  // CHECK: |       `-TemplateTypeParm {{.*}} 'T'
+  // CHECK: |-TemplateSpecializationType {{.*}} 'S<T>' dependent
+  // CHECK: | `-TemplateArgument type 'T'
+  // CHECK: |   `-TemplateTypeParmType {{.*}} 'T' dependent depth 0 index 0
+  // CHECK: |     `-TemplateTypeParm {{.*}} 'T'
   // CHECK: `-TemplateTypeParmType {{.*}} 'T' dependent depth 0 index 0
   // CHECK:   `-TemplateTypeParm {{.*}} 'T'
 
@@ -274,10 +273,10 @@ namespace TrailingPack {
   // CHECK: |-TemplateArgument pack
   // CHECK: | |-TemplateArgument type 'TrailingPack::(lambda at {{.*}})'
   // CHECK: | | `-RecordType {{.*}} 'TrailingPack::(lambda at {{.*}})'
-  // CHECK: | |   `-CXXRecord {{.*}} <line:262:5>
+  // CHECK: | |   `-CXXRecord {{.*}} <line:261:5>
   // CHECK: | `-TemplateArgument type 'TrailingPack::(lambda at {{.*}})'
   // CHECK: |   `-RecordType {{.*}} 'TrailingPack::(lambda at {{.*}})'
-  // CHECK: |     `-CXXRecord {{.*}} <line:263:5>
+  // CHECK: |     `-CXXRecord {{.*}} <line:262:5>
   // CHECK: |-ParmVarDecl {{.*}} 'TrailingPack::(lambda at {{.*}})'
   // CHECK: `-ParmVarDecl {{.*}} 'TrailingPack::(lambda at {{.*}})'
   // CHECK: FunctionProtoType {{.*}} 'auto (T...) -> A<T...>' dependent trailing_return cdecl
@@ -357,12 +356,11 @@ namespace DeduceArity {
   // CHECK: FunctionProtoType {{.*}} 'auto (Types<T...>, T...) -> F<T...>' dependent trailing_return cdecl
   // CHECK: |-InjectedClassNameType {{.*}} 'F<T...>' dependent
   // CHECK: | `-CXXRecord {{.*}} 'F'
-  // CHECK: |-ElaboratedType {{.*}} 'Types<T...>' sugar dependent
-  // CHECK: | `-TemplateSpecializationType {{.*}} 'Types<T...>' dependent
-  // CHECK: |   `-TemplateArgument type 'T...'
-  // CHECK: |     `-PackExpansionType {{.*}} 'T...' dependent
-  // CHECK: |       `-TemplateTypeParmType {{.*}} 'T' dependent contains_unexpanded_pack depth 0 index 0 pack
-  // CHECK: |         `-TemplateTypeParm {{.*}} 'T'
+  // CHECK: |-TemplateSpecializationType {{.*}} 'Types<T...>' dependent
+  // CHECK: | `-TemplateArgument type 'T...'
+  // CHECK: |   `-PackExpansionType {{.*}} 'T...' dependent
+  // CHECK: |     `-TemplateTypeParmType {{.*}} 'T' dependent contains_unexpanded_pack depth 0 index 0 pack
+  // CHECK: |       `-TemplateTypeParm {{.*}} 'T'
   // CHECK: `-PackExpansionType {{.*}} 'T...' dependent
   // CHECK:   `-TemplateTypeParmType {{.*}} 'T' dependent contains_unexpanded_pack depth 0 index 0 pack
   // CHECK:     `-TemplateTypeParm {{.*}} 'T'

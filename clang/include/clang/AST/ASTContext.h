@@ -1810,18 +1810,20 @@ public:
       TemplateName T, ArrayRef<TemplateArgument> CanonicalArgs) const;
 
   QualType
-  getTemplateSpecializationType(TemplateName T,
+  getTemplateSpecializationType(ElaboratedTypeKeyword Keyword, TemplateName T,
                                 ArrayRef<TemplateArgument> SpecifiedArgs,
                                 ArrayRef<TemplateArgument> CanonicalArgs,
                                 QualType Underlying = QualType()) const;
 
   QualType
-  getTemplateSpecializationType(TemplateName T,
+  getTemplateSpecializationType(ElaboratedTypeKeyword Keyword, TemplateName T,
                                 ArrayRef<TemplateArgumentLoc> SpecifiedArgs,
                                 ArrayRef<TemplateArgument> CanonicalArgs,
                                 QualType Canon = QualType()) const;
 
   TypeSourceInfo *getTemplateSpecializationTypeInfo(
+      ElaboratedTypeKeyword Keyword, SourceLocation ElaboratedKeywordLoc,
+      NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKeywordLoc,
       TemplateName T, SourceLocation TLoc,
       const TemplateArgumentListInfo &SpecifiedArgs,
       ArrayRef<TemplateArgument> CanonicalArgs,

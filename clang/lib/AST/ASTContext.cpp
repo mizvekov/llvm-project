@@ -5566,16 +5566,20 @@ QualType ASTContext::getTemplateTypeParmType(unsigned Depth, unsigned Index,
 }
 
 TypeSourceInfo *ASTContext::getTemplateSpecializationTypeInfo(
+    ElaboratedTypeKeyword Keyword, SourceLocation ElaboratedKeywordLoc,
+    NestedNameSpecifierLoc QualifierLoc, SourceLocation TemplateKeywordLoc,
     TemplateName Name, SourceLocation NameLoc,
     const TemplateArgumentListInfo &SpecifiedArgs,
     ArrayRef<TemplateArgument> CanonicalArgs, QualType Underlying) const {
-  QualType TST = getTemplateSpecializationType(Name, SpecifiedArgs.arguments(),
-                                               CanonicalArgs, Underlying);
+  QualType TST = getTemplateSpecializationType(
+      Keyword, Name, SpecifiedArgs.arguments(), CanonicalArgs, Underlying);
 
   TypeSourceInfo *DI = CreateTypeSourceInfo(TST);
   TemplateSpecializationTypeLoc TL =
       DI->getTypeLoc().castAs<TemplateSpecializationTypeLoc>();
-  TL.setTemplateKeywordLoc(SourceLocation());
+  TL.setElaboratedKeywordLoc(ElaboratedKeywordLoc);
+  TL.setQualifierLoc(QualifierLoc);
+  TL.setTemplateKeywordLoc(TemplateKeywordLoc);
   TL.setTemplateNameLoc(NameLoc);
   TL.setLAngleLoc(SpecifiedArgs.getLAngleLoc());
   TL.setRAngleLoc(SpecifiedArgs.getRAngleLoc());
@@ -5585,15 +5589,16 @@ TypeSourceInfo *ASTContext::getTemplateSpecializationTypeInfo(
 }
 
 QualType ASTContext::getTemplateSpecializationType(
-    TemplateName Template, ArrayRef<TemplateArgumentLoc> SpecifiedArgs,
+    ElaboratedTypeKeyword Keyword, TemplateName Template,
+    ArrayRef<TemplateArgumentLoc> SpecifiedArgs,
     ArrayRef<TemplateArgument> CanonicalArgs, QualType Underlying) const {
   SmallVector<TemplateArgument, 4> SpecifiedArgVec;
   SpecifiedArgVec.reserve(SpecifiedArgs.size());
   for (const TemplateArgumentLoc &Arg : SpecifiedArgs)
     SpecifiedArgVec.push_back(Arg.getArgument());
 
-  return getTemplateSpecializationType(Template, SpecifiedArgVec, CanonicalArgs,
-                                       Underlying);
+  return getTemplateSpecializationType(Keyword, Template, SpecifiedArgVec,
+                                       CanonicalArgs, Underlying);
 }
 
 [[maybe_unused]] static bool
@@ -5624,7 +5629,8 @@ QualType ASTContext::getCanonicalTemplateSpecializationType(
                            sizeof(TemplateArgument) * Args.size(),
                        alignof(TemplateSpecializationType));
   auto *Spec = new (Mem)
-      TemplateSpecializationType(Template, /*IsAlias=*/false, Args, QualType());
+      TemplateSpecializationType(ElaboratedTypeKeyword::None, Template,
+                                 /*IsAlias=*/false, Args, QualType());
   assert(Spec->isDependentType() &&
          "canonical template specialization must be dependent");
   Types.push_back(Spec);
@@ -5633,7 +5639,8 @@ QualType ASTContext::getCanonicalTemplateSpecializationType(
 }
 
 QualType ASTContext::getTemplateSpecializationType(
-    TemplateName Template, ArrayRef<TemplateArgument> SpecifiedArgs,
+    ElaboratedTypeKeyword Keyword, TemplateName Template,
+    ArrayRef<TemplateArgument> SpecifiedArgs,
     ArrayRef<TemplateArgument> CanonicalArgs, QualType Underlying) const {
   assert(!Template.getUnderlying().getAsDependentTemplateName() &&
          "No dependent template names here!");
@@ -5643,7 +5650,8 @@ QualType ASTContext::getTemplateSpecializationType(
   if (Underlying.isNull()) {
     TemplateName CanonTemplate =
         getCanonicalTemplateName(Template, /*IgnoreDeduced=*/true);
-    bool NonCanonical = Template != CanonTemplate;
+    bool NonCanonical =
+        Template != CanonTemplate || Keyword != ElaboratedTypeKeyword::None;
     SmallVector<TemplateArgument, 4> CanonArgsVec;
     if (CanonicalArgs.empty()) {
       CanonArgsVec = SmallVector<TemplateArgument, 4>(SpecifiedArgs);
@@ -5674,8 +5682,8 @@ QualType ASTContext::getTemplateSpecializationType(
                            sizeof(TemplateArgument) * SpecifiedArgs.size() +
                            (IsTypeAlias ? sizeof(QualType) : 0),
                        alignof(TemplateSpecializationType));
-  auto *Spec = new (Mem) TemplateSpecializationType(Template, IsTypeAlias,
-                                                    SpecifiedArgs, Underlying);
+  auto *Spec = new (Mem) TemplateSpecializationType(
+      Keyword, Template, IsTypeAlias, SpecifiedArgs, Underlying);
   Types.push_back(Spec);
   return QualType(Spec, 0);
 }
@@ -5684,7 +5692,7 @@ QualType ASTContext::getElaboratedType(ElaboratedTypeKeyword Keyword,
                                        NestedNameSpecifier *NNS,
                                        QualType NamedType,
                                        TagDecl *OwnedTagDecl) const {
-  assert(!isa<ElaboratedType>(NamedType));
+  assert((!isa<ElaboratedType, TemplateSpecializationType>(NamedType)));
 
   llvm::FoldingSetNodeID ID;
   ElaboratedType::Profile(ID, Keyword, NNS, NamedType, OwnedTagDecl);
@@ -13495,9 +13503,14 @@ static auto getCommonTemplateArguments(ASTContext &Ctx,
 }
 
 template <class T>
-static ElaboratedTypeKeyword getCommonTypeKeyword(const T *X, const T *Y) {
-  return X->getKeyword() == Y->getKeyword() ? X->getKeyword()
-                                            : ElaboratedTypeKeyword::None;
+static ElaboratedTypeKeyword getCommonTypeKeyword(const T *X, const T *Y,
+                                                  bool IsSame) {
+  ElaboratedTypeKeyword KX = X->getKeyword(), KY = Y->getKeyword();
+  if (KX == KY)
+    return KX;
+  KX = getCanonicalElaboratedTypeKeyword(KX);
+  assert(!IsSame || KX == getCanonicalElaboratedTypeKeyword(KY));
+  return KX;
 }
 
 /// Returns a NestedNameSpecifier which has only the common sugar
@@ -13965,6 +13978,7 @@ static QualType getCommonNonSugarTypeNode(ASTContext &Ctx, const Type *X,
     auto As = getCommonTemplateArguments(Ctx, TX->template_arguments(),
                                          TY->template_arguments());
     return Ctx.getTemplateSpecializationType(
+        getCommonTypeKeyword(TX, TY, /*IsSame=*/false),
         ::getCommonTemplateNameChecked(Ctx, TX->getTemplateName(),
                                        TY->getTemplateName(),
                                        /*IgnoreDeduced=*/true),
@@ -13992,7 +14006,7 @@ static QualType getCommonNonSugarTypeNode(ASTContext &Ctx, const Type *X,
                *NY = cast<DependentNameType>(Y);
     assert(NX->getIdentifier() == NY->getIdentifier());
     return Ctx.getDependentNameType(
-        getCommonTypeKeyword(NX, NY),
+        getCommonTypeKeyword(NX, NY, /*IsSame=*/true),
         getCommonQualifier(Ctx, NX, NY, /*IsSame=*/true), NX->getIdentifier());
   }
   case Type::DependentTemplateSpecialization: {
@@ -14008,7 +14022,7 @@ static QualType getCommonNonSugarTypeNode(ASTContext &Ctx, const Type *X,
                      /*IsSame=*/true),
         SX.getName(), SX.hasTemplateKeyword() || SY.hasTemplateKeyword());
     return Ctx.getDependentTemplateSpecializationType(
-        getCommonTypeKeyword(TX, TY), Name, As);
+        getCommonTypeKeyword(TX, TY, /*IsSame=*/true), Name, As);
   }
   case Type::UnaryTransform: {
     const auto *TX = cast<UnaryTransformType>(X),
@@ -14164,7 +14178,7 @@ static QualType getCommonSugarTypeNode(ASTContext &Ctx, const Type *X,
   case Type::Elaborated: {
     const auto *EX = cast<ElaboratedType>(X), *EY = cast<ElaboratedType>(Y);
     return Ctx.getElaboratedType(
-        ::getCommonTypeKeyword(EX, EY),
+        ::getCommonTypeKeyword(EX, EY, /*IsSame=*/false),
         ::getCommonQualifier(Ctx, EX, EY, /*IsSame=*/false),
         Ctx.getQualifiedType(Underlying),
         ::getCommonDecl(EX->getOwnedTagDecl(), EY->getOwnedTagDecl()));
@@ -14212,9 +14226,9 @@ static QualType getCommonSugarTypeNode(ASTContext &Ctx, const Type *X,
     if (getCommonTemplateArguments(Ctx, As, TX->template_arguments(),
                                    TY->template_arguments()))
       return QualType();
-    return Ctx.getTemplateSpecializationType(CTN, As,
-                                             /*CanonicalArgs=*/std::nullopt,
-                                             Ctx.getQualifiedType(Underlying));
+    return Ctx.getTemplateSpecializationType(
+        getCommonTypeKeyword(TX, TY, /*IsSame=*/false), CTN, As,
+        /*CanonicalArgs=*/std::nullopt, Ctx.getQualifiedType(Underlying));
   }
   case Type::Typedef: {
     const auto *TX = cast<TypedefType>(X), *TY = cast<TypedefType>(Y);

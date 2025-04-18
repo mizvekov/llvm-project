@@ -4791,9 +4791,12 @@ TemplateDeclInstantiator::InstantiateClassTemplatePartialSpecialization(
 
   // Build the type that describes the converted template arguments of the class
   // template partial specialization.
+  TemplateName Name = SemaRef.Context.getQualifiedTemplateName(
+      /*NNS=*/nullptr, /*TemplateKeyword=*/false, TemplateName(ClassTemplate));
   TypeSourceInfo *WrittenTy = SemaRef.Context.getTemplateSpecializationTypeInfo(
-      TemplateName(ClassTemplate), TemplArgInfo->getLAngleLoc(),
-      InstTemplateArgs, CTAI.CanonicalConverted);
+      ElaboratedTypeKeyword::None, /*ElaboratedKeywordLoc=*/SourceLocation(),
+      NestedNameSpecifierLoc(), /*TemplateKeywordLoc=*/SourceLocation(), Name,
+      TemplArgInfo->getLAngleLoc(), InstTemplateArgs, CTAI.CanonicalConverted);
 
   // Create the class template partial specialization declaration.
   ClassTemplatePartialSpecializationDecl *InstPartialSpec =
@@ -6878,7 +6881,8 @@ NamedDecl *Sema::FindInstantiatedDecl(SourceLocation Loc, NamedDecl *D,
               Args.addArgument(
                   getTrivialTemplateArgumentLoc(UnpackedArg, QualType(), Loc));
           }
-          QualType T = CheckTemplateIdType(TemplateName(TD), Loc, Args);
+          QualType T = CheckTemplateIdType(ElaboratedTypeKeyword::None,
+                                           TemplateName(TD), Loc, Args);
           // We may get a non-null type with errors, in which case
           // `getAsCXXRecordDecl` will return `nullptr`. For instance, this
           // happens when one of the template arguments is an invalid

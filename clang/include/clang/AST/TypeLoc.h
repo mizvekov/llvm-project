@@ -1687,9 +1687,11 @@ struct TemplateNameLocInfo {
 };
 
 struct TemplateSpecializationLocInfo : TemplateNameLocInfo {
+  SourceLocation ElaboratedKWLoc;
   SourceLocation TemplateKWLoc;
   SourceLocation LAngleLoc;
   SourceLocation RAngleLoc;
+  void *QualifierData;
 };
 
 class TemplateSpecializationTypeLoc :
@@ -1698,6 +1700,44 @@ class TemplateSpecializationTypeLoc :
                            TemplateSpecializationType,
                            TemplateSpecializationLocInfo> {
 public:
+  SourceLocation getElaboratedKeywordLoc() const {
+    return getLocalData()->ElaboratedKWLoc;
+  }
+
+  void setElaboratedKeywordLoc(SourceLocation Loc) {
+    getLocalData()->ElaboratedKWLoc = Loc;
+  }
+
+  NestedNameSpecifierLoc getQualifierLoc() const {
+    if (!getLocalData()->QualifierData)
+      return NestedNameSpecifierLoc();
+
+    return NestedNameSpecifierLoc(getTypePtr()
+                                      ->getTemplateName()
+                                      .getAsQualifiedTemplateName()
+                                      ->getQualifier(),
+                                  getLocalData()->QualifierData);
+  }
+
+  void setQualifierLoc(NestedNameSpecifierLoc QualifierLoc) {
+    if (!QualifierLoc) {
+      // Even if we have a nested-name-specifier in the dependent
+      // template specialization type, we won't record the nested-name-specifier
+      // location information when this type-source location information is
+      // part of a nested-name-specifier.
+      getLocalData()->QualifierData = nullptr;
+      return;
+    }
+
+    assert(QualifierLoc.getNestedNameSpecifier() ==
+               getTypePtr()
+                   ->getTemplateName()
+                   .getAsAdjustedQualifiedTemplateName()
+                   ->getQualifier() &&
+           "Inconsistent nested-name-specifier pointer");
+    getLocalData()->QualifierData = QualifierLoc.getOpaqueData();
+  }
+
   SourceLocation getTemplateKeywordLoc() const {
     return getLocalData()->TemplateKWLoc;
   }
@@ -1760,14 +1800,35 @@ public:
   }
 
   SourceRange getLocalSourceRange() const {
-    if (getTemplateKeywordLoc().isValid())
-      return SourceRange(getTemplateKeywordLoc(), getRAngleLoc());
-    else
-      return SourceRange(getTemplateNameLoc(), getRAngleLoc());
+    SourceLocation BeginLoc;
+    if (NestedNameSpecifierLoc Qualifier = getQualifierLoc())
+      BeginLoc = Qualifier.getBeginLoc();
+    if (BeginLoc.isInvalid())
+      BeginLoc = getElaboratedKeywordLoc();
+    if (BeginLoc.isInvalid())
+      BeginLoc = getTemplateKeywordLoc();
+    if (BeginLoc.isInvalid())
+      BeginLoc = getTemplateNameLoc();
+    return SourceRange(BeginLoc, getRAngleLoc());
   }
 
   void initializeLocal(ASTContext &Context, SourceLocation Loc) {
-    setTemplateKeywordLoc(SourceLocation());
+    QualifiedTemplateName *Name =
+        getTypePtr()->getTemplateName().getAsAdjustedQualifiedTemplateName();
+
+    setElaboratedKeywordLoc(getTypePtr()->getKeyword() !=
+                                    ElaboratedTypeKeyword::None
+                                ? Loc
+                                : SourceLocation());
+    if (auto *Qualifier = Name ? Name->getQualifier() : nullptr) {
+      NestedNameSpecifierLocBuilder Builder;
+      Builder.MakeTrivial(Context, Qualifier, Loc);
+      setQualifierLoc(Builder.getWithLocInContext(Context));
+    } else {
+      getLocalData()->QualifierData = nullptr;
+    }
+    setTemplateKeywordLoc(
+        Name && Name->hasTemplateKeyword() ? Loc : SourceLocation());
     setTemplateNameLoc(Loc);
     setLAngleLoc(Loc);
     setRAngleLoc(Loc);

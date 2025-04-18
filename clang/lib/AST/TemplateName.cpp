@@ -289,6 +289,15 @@ QualifiedTemplateName *TemplateName::getAsQualifiedTemplateName() const {
   return dyn_cast_if_present<QualifiedTemplateName *>(Storage);
 }
 
+QualifiedTemplateName *
+TemplateName::getAsAdjustedQualifiedTemplateName() const {
+  for (std::optional<TemplateName> Cur = *this; Cur;
+       Cur = Cur->desugar(/*IgnoreDeduced=*/true))
+    if (QualifiedTemplateName *N = Cur->getAsQualifiedTemplateName())
+      return N;
+  return nullptr;
+}
+
 DependentTemplateName *TemplateName::getAsDependentTemplateName() const {
   return Storage.dyn_cast<DependentTemplateName *>();
 }

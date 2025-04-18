@@ -654,14 +654,9 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
           ->template_arguments();
 
   QualType UA = A;
-  std::optional<NestedNameSpecifier *> NNS;
   // Treat an injected-class-name as its underlying template-id.
-  if (const auto *Elaborated = A->getAs<ElaboratedType>()) {
-    NNS = Elaborated->getQualifier();
-  } else if (const auto *Injected = A->getAs<InjectedClassNameType>()) {
+  if (const auto *Injected = A->getAs<InjectedClassNameType>())
     UA = Injected->getInjectedSpecializationType();
-    NNS = nullptr;
-  }
 
   // Check whether the template argument is a dependent template-id.
   if (isa<TemplateSpecializationType>(UA.getCanonicalType())) {
@@ -708,10 +703,11 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
     return TemplateDeductionResult::NonDeducedMismatch;
   }
 
-  TemplateName TNA = TemplateName(SA->getSpecializedTemplate());
-  if (NNS)
-    TNA = S.Context.getQualifiedTemplateName(
-        *NNS, false, TemplateName(SA->getSpecializedTemplate()));
+  TemplateName TNA;
+  if (const auto *TST = A->getAsNonAliasTemplateSpecializationType())
+    TNA = TST->getTemplateName();
+  else
+    TNA = TemplateName(SA->getSpecializedTemplate());
 
   // Perform template argument deduction for the template name.
   if (auto Result = DeduceTemplateArguments(

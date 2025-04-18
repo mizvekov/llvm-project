@@ -1300,12 +1300,14 @@ bool Parser::AnnotateTemplateIdToken(TemplateTy Template, TemplateNameKind TNK,
 
   // Build the annotation token.
   if (TNK == TNK_Type_template && AllowTypeAnnotation) {
-    TypeResult Type = ArgsInvalid
-                          ? TypeError()
-                          : Actions.ActOnTemplateIdType(
-                                getCurScope(), SS, TemplateKWLoc, Template,
-                                TemplateName.Identifier, TemplateNameLoc,
-                                LAngleLoc, TemplateArgsPtr, RAngleLoc);
+    TypeResult Type =
+        ArgsInvalid
+            ? TypeError()
+            : Actions.ActOnTemplateIdType(
+                  getCurScope(), ElaboratedTypeKeyword::None,
+                  /*ElaboratedKeywordLoc=*/SourceLocation(), SS, TemplateKWLoc,
+                  Template, TemplateName.Identifier, TemplateNameLoc, LAngleLoc,
+                  TemplateArgsPtr, RAngleLoc);
 
     Tok.setKind(tok::annot_typename);
     setTypeAnnotation(Tok, Type);
@@ -1381,10 +1383,11 @@ void Parser::AnnotateTemplateIdTokenAsType(
       TemplateId->isInvalid()
           ? TypeError()
           : Actions.ActOnTemplateIdType(
-                getCurScope(), SS, TemplateId->TemplateKWLoc,
-                TemplateId->Template, TemplateId->Name,
-                TemplateId->TemplateNameLoc, TemplateId->LAngleLoc,
-                TemplateArgsPtr, TemplateId->RAngleLoc,
+                getCurScope(), ElaboratedTypeKeyword::None,
+                /*ElaboratedKeywordLoc=*/SourceLocation(), SS,
+                TemplateId->TemplateKWLoc, TemplateId->Template,
+                TemplateId->Name, TemplateId->TemplateNameLoc,
+                TemplateId->LAngleLoc, TemplateArgsPtr, TemplateId->RAngleLoc,
                 /*IsCtorOrDtorName=*/false, IsClassName, AllowImplicitTypename);
   // Create the new "type" annotation token.
   Tok.setKind(tok::annot_typename);

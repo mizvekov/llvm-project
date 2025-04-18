@@ -259,7 +259,8 @@ public:
 
   // Template visitors
   bool VisitTemplateParameters(const TemplateParameterList *Params);
-  bool VisitTemplateName(TemplateName Name, SourceLocation Loc);
+  bool VisitTemplateName(TemplateName Name, SourceLocation NameLoc,
+                         NestedNameSpecifierLoc NNS);
   bool VisitTemplateArgumentLoc(const TemplateArgumentLoc &TAL);
 
   // Type visitors

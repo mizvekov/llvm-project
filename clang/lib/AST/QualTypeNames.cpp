@@ -116,72 +116,70 @@ static bool getFullyQualifiedTemplateArgument(const ASTContext &Ctx,
 }
 
 static const Type *getFullyQualifiedTemplateType(const ASTContext &Ctx,
-                                                 const Type *TypePtr,
+                                                 const RecordType *TSTRecord,
                                                  bool WithGlobalNsPrefix) {
-  // DependentTemplateTypes exist within template declarations and
-  // definitions. Therefore we shouldn't encounter them at the end of
-  // a translation unit. If we do, the caller has made an error.
-  assert(!isa<DependentTemplateSpecializationType>(TypePtr));
-  // In case of template specializations, iterate over the arguments
-  // and fully qualify them as well.
-  if (const auto *TST = dyn_cast<const TemplateSpecializationType>(TypePtr)) {
-    bool MightHaveChanged = false;
-    SmallVector<TemplateArgument, 4> FQArgs;
-    // Cheap to copy and potentially modified by
-    // getFullyQualifedTemplateArgument.
-    for (TemplateArgument Arg : TST->template_arguments()) {
-      MightHaveChanged |= getFullyQualifiedTemplateArgument(
-          Ctx, Arg, WithGlobalNsPrefix);
-      FQArgs.push_back(Arg);
-    }
+  // We are asked to fully qualify and we have a Record Type,
+  // which can point to a template instantiation with no sugar in any of
+  // its template argument, however we still need to fully qualify them.
 
-    // If a fully qualified arg is different from the unqualified arg,
-    // allocate new type in the AST.
-    if (MightHaveChanged) {
-      QualType QT = Ctx.getTemplateSpecializationType(
-          TST->getTemplateName(), FQArgs,
-          /*CanonicalArgs=*/std::nullopt, TST->desugar());
-      // getTemplateSpecializationType returns a fully qualified
-      // version of the specialization itself, so no need to qualify
-      // it.
-      return QT.getTypePtr();
-    }
-  } else if (const auto *TSTRecord = dyn_cast<const RecordType>(TypePtr)) {
-    // We are asked to fully qualify and we have a Record Type,
-    // which can point to a template instantiation with no sugar in any of
-    // its template argument, however we still need to fully qualify them.
+  const auto *TSTDecl =
+      dyn_cast<ClassTemplateSpecializationDecl>(TSTRecord->getDecl());
+  if (!TSTDecl)
+    return TSTRecord;
 
-    if (const auto *TSTDecl =
-        dyn_cast<ClassTemplateSpecializationDecl>(TSTRecord->getDecl())) {
-      const TemplateArgumentList &TemplateArgs = TSTDecl->getTemplateArgs();
+  const TemplateArgumentList &TemplateArgs = TSTDecl->getTemplateArgs();
 
-      bool MightHaveChanged = false;
-      SmallVector<TemplateArgument, 4> FQArgs;
-      for (unsigned int I = 0, E = TemplateArgs.size(); I != E; ++I) {
-        // cheap to copy and potentially modified by
-        // getFullyQualifedTemplateArgument
-        TemplateArgument Arg(TemplateArgs[I]);
-        MightHaveChanged |= getFullyQualifiedTemplateArgument(
-            Ctx, Arg, WithGlobalNsPrefix);
-        FQArgs.push_back(Arg);
-      }
-
-      // If a fully qualified arg is different from the unqualified arg,
-      // allocate new type in the AST.
-      if (MightHaveChanged) {
-        TemplateName TN(TSTDecl->getSpecializedTemplate());
-        QualType QT = Ctx.getTemplateSpecializationType(
-            TN, FQArgs,
-            /*CanonicalArgs=*/std::nullopt,
-            TSTRecord->getCanonicalTypeInternal());
-        // getTemplateSpecializationType returns a fully qualified
-        // version of the specialization itself, so no need to qualify
-        // it.
-        return QT.getTypePtr();
-      }
-    }
+  bool MightHaveChanged = false;
+  SmallVector<TemplateArgument, 4> FQArgs;
+  for (unsigned int I = 0, E = TemplateArgs.size(); I != E; ++I) {
+    // cheap to copy and potentially modified by
+    // getFullyQualifedTemplateArgument
+    TemplateArgument Arg(TemplateArgs[I]);
+    MightHaveChanged |=
+        getFullyQualifiedTemplateArgument(Ctx, Arg, WithGlobalNsPrefix);
+    FQArgs.push_back(Arg);
   }
-  return TypePtr;
+
+  if (!MightHaveChanged)
+    return TSTRecord;
+  // If a fully qualified arg is different from the unqualified arg,
+  // allocate new type in the AST.
+  TemplateName TN(TSTDecl->getSpecializedTemplate());
+  QualType QT = Ctx.getTemplateSpecializationType(
+      ElaboratedTypeKeyword::None, TN, FQArgs,
+      /*CanonicalArgs=*/std::nullopt, TSTRecord->getCanonicalTypeInternal());
+  // getTemplateSpecializationType returns a fully qualified
+  // version of the specialization itself, so no need to qualify
+  // it.
+  return QT.getTypePtr();
+}
+
+static const Type *
+getFullyQualifiedTemplateType(const ASTContext &Ctx,
+                              const TemplateSpecializationType *TST,
+                              bool WithGlobalNsPrefix) {
+  TemplateName TName = TST->getTemplateName();
+  bool MightHaveChanged =
+      getFullyQualifiedTemplateName(Ctx, TName, WithGlobalNsPrefix);
+  SmallVector<TemplateArgument, 4> FQArgs;
+  // Cheap to copy and potentially modified by
+  // getFullyQualifedTemplateArgument.
+  for (TemplateArgument Arg : TST->template_arguments()) {
+    MightHaveChanged |=
+        getFullyQualifiedTemplateArgument(Ctx, Arg, WithGlobalNsPrefix);
+    FQArgs.push_back(Arg);
+  }
+
+  if (!MightHaveChanged)
+    return TST;
+
+  QualType NewQT = Ctx.getTemplateSpecializationType(
+      TST->getKeyword(), TName, FQArgs,
+      /*CanonicalArgs=*/std::nullopt, TST->desugar());
+  // getTemplateSpecializationType returns a fully qualified
+  // version of the specialization itself, so no need to qualify
+  // it.
+  return NewQT.getTypePtr();
 }
 
 static NestedNameSpecifier *createOuterNNS(const ASTContext &Ctx, const Decl *D,
@@ -262,7 +260,9 @@ static NestedNameSpecifier *createNestedNameSpecifierForScopeOf(
   const DeclContext *DC = Decl->getDeclContext()->getRedeclContext();
   const auto *Outer = dyn_cast<NamedDecl>(DC);
   const auto *OuterNS = dyn_cast<NamespaceDecl>(DC);
-  if (Outer && !(OuterNS && OuterNS->isAnonymousNamespace())) {
+  if (OuterNS && OuterNS->isAnonymousNamespace())
+    OuterNS = dyn_cast<NamespaceDecl>(OuterNS->getParent());
+  if (Outer) {
     if (const auto *CxxDecl = dyn_cast<CXXRecordDecl>(DC)) {
       if (ClassTemplateDecl *ClassTempl =
               CxxDecl->getDescribedClassTemplate()) {
@@ -350,19 +350,22 @@ NestedNameSpecifier *createNestedNameSpecifier(const ASTContext &Ctx,
                                                bool FullyQualify,
                                                bool WithGlobalNsPrefix) {
   const Type *TypePtr = TD->getTypeForDecl();
-  if (isa<const TemplateSpecializationType>(TypePtr) ||
-      isa<const RecordType>(TypePtr)) {
+  if (auto *RD = dyn_cast<RecordType>(TypePtr)) {
     // We are asked to fully qualify and we have a Record Type (which
     // may point to a template specialization) or Template
     // Specialization Type. We need to fully qualify their arguments.
-
-    TypePtr = getFullyQualifiedTemplateType(Ctx, TypePtr, WithGlobalNsPrefix);
+    TypePtr = getFullyQualifiedTemplateType(Ctx, RD, WithGlobalNsPrefix);
+    if (isa<RecordType>(TypePtr)) {
+      QualType ET = Ctx.getElaboratedType(
+          ElaboratedTypeKeyword::None,
+          createOuterNNS(Ctx, TD, FullyQualify, WithGlobalNsPrefix),
+          QualType(TypePtr, 0));
+      TypePtr = ET.getTypePtr();
+    }
+  } else if (auto *TST = dyn_cast<TemplateSpecializationType>(TypePtr)) {
+    TypePtr = getFullyQualifiedTemplateType(Ctx, TST, WithGlobalNsPrefix);
   }
-  QualType ET = Ctx.getElaboratedType(
-      ElaboratedTypeKeyword::None,
-      createOuterNNS(Ctx, TD, FullyQualify, WithGlobalNsPrefix),
-      QualType(TypePtr, 0));
-  return NestedNameSpecifier::Create(Ctx, ET.getTypePtr());
+  return NestedNameSpecifier::Create(Ctx, TypePtr);
 }
 
 /// Return the fully qualified type, including fully-qualified
@@ -439,7 +442,15 @@ QualType getFullyQualifiedType(QualType QT, const ASTContext &Ctx,
     QT = Ctx.getQualifiedType(QT, Quals);
   }
 
-  NestedNameSpecifier *Prefix = nullptr;
+  if (const auto *TST =
+          dyn_cast<const TemplateSpecializationType>(QT.getTypePtr())) {
+
+    const Type *T = getFullyQualifiedTemplateType(Ctx, TST, WithGlobalNsPrefix);
+    if (T == TST)
+      return QT;
+    return Ctx.getQualifiedType(T, QT.getQualifiers());
+  }
+
   // Local qualifiers are attached to the QualType outside of the
   // elaborated type.  Retrieve them before descending into the
   // elaborated type.
@@ -460,25 +471,22 @@ QualType getFullyQualifiedType(QualType QT, const ASTContext &Ctx,
   }
 
   // Create a nested name specifier if needed.
-  Prefix = createNestedNameSpecifierForScopeOf(Ctx, QT.getTypePtr(),
-                                               true /*FullyQualified*/,
-                                               WithGlobalNsPrefix);
+  NestedNameSpecifier *Prefix = createNestedNameSpecifierForScopeOf(
+      Ctx, QT.getTypePtr(), true /*FullyQualified*/, WithGlobalNsPrefix);
 
   // In case of template specializations iterate over the arguments and
   // fully qualify them as well.
-  if (isa<const TemplateSpecializationType>(QT.getTypePtr()) ||
-      isa<const RecordType>(QT.getTypePtr())) {
+  if (const auto *RD = dyn_cast<RecordType>(QT.getTypePtr())) {
     // We are asked to fully qualify and we have a Record Type (which
     // may point to a template specialization) or Template
     // Specialization Type. We need to fully qualify their arguments.
 
-    const Type *TypePtr = getFullyQualifiedTemplateType(
-        Ctx, QT.getTypePtr(), WithGlobalNsPrefix);
+    const Type *TypePtr =
+        getFullyQualifiedTemplateType(Ctx, RD, WithGlobalNsPrefix);
     QT = QualType(TypePtr, 0);
   }
-  if (Prefix || Keyword != ElaboratedTypeKeyword::None) {
+  if (Prefix || Keyword != ElaboratedTypeKeyword::None)
     QT = Ctx.getElaboratedType(Keyword, Prefix, QT);
-  }
   QT = Ctx.getQualifiedType(QT, PrefixQualifiers);
   return QT;
 }

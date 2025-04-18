@@ -89,8 +89,8 @@ static QualType lookupPromiseType(Sema &S, const FunctionDecl *FD,
     AddArg(T);
 
   // Build the template-id.
-  QualType CoroTrait =
-      S.CheckTemplateIdType(TemplateName(CoroTraits), KwLoc, Args);
+  QualType CoroTrait = S.CheckTemplateIdType(
+      ElaboratedTypeKeyword::None, TemplateName(CoroTraits), KwLoc, Args);
   if (CoroTrait.isNull())
     return QualType();
   if (S.RequireCompleteType(KwLoc, CoroTrait,
@@ -114,22 +114,13 @@ static QualType lookupPromiseType(Sema &S, const FunctionDecl *FD,
   // The promise type is required to be a class type.
   QualType PromiseType = S.Context.getTypeDeclType(Promise);
 
-  auto buildElaboratedType = [&]() {
-    auto *NNS = NestedNameSpecifier::Create(S.Context, nullptr, S.getStdNamespace());
-    QualType ET = S.Context.getElaboratedType(ElaboratedTypeKeyword::None, NNS,
-                                              CoroTrait);
-    NNS = NestedNameSpecifier::Create(S.Context, ET.getTypePtr());
-    return S.Context.getElaboratedType(ElaboratedTypeKeyword::None, NNS,
-                                       PromiseType);
-  };
-
   if (!PromiseType->getAsCXXRecordDecl()) {
     S.Diag(FuncLoc,
            diag::err_implied_std_coroutine_traits_promise_type_not_class)
-        << buildElaboratedType();
+        << PromiseType;
     return QualType();
   }
-  if (S.RequireCompleteType(FuncLoc, buildElaboratedType(),
+  if (S.RequireCompleteType(FuncLoc, PromiseType,
                             diag::err_coroutine_promise_type_incomplete))
     return QualType();
 
@@ -169,8 +160,8 @@ static QualType lookupCoroutineHandleType(Sema &S, QualType PromiseType,
       S.Context.getTrivialTypeSourceInfo(PromiseType, Loc)));
 
   // Build the template-id.
-  QualType CoroHandleType =
-      S.CheckTemplateIdType(TemplateName(CoroHandle), Loc, Args);
+  QualType CoroHandleType = S.CheckTemplateIdType(
+      ElaboratedTypeKeyword::None, TemplateName(CoroHandle), Loc, Args);
   if (CoroHandleType.isNull())
     return QualType();
   if (S.RequireCompleteType(Loc, CoroHandleType,

@@ -1,8 +1,17 @@
-Failed Tests (12):
-  Clang Tools :: clang-tidy/checkers/modernize/type-traits.cpp
+Failed Tests (25):
+  Clang Tools :: clang-tidy/checkers/abseil/no-internal-dependencies.cpp
+  Clang Tools :: clang-tidy/checkers/bugprone/incorrect-enable-if.cpp
+  Clang Tools :: clang-tidy/checkers/bugprone/unused-local-non-trivial-variable.cpp
+  Clang Tools :: clang-tidy/checkers/cppcoreguidelines/no-suspend-with-lock.cpp
+  Clang Tools :: clang-tidy/checkers/modernize/pass-by-value.cpp
+  Clang Tools :: clang-tidy/checkers/modernize/replace-auto-ptr.cpp
   Clang Tools :: clang-tidy/checkers/modernize/use-constraints.cpp
+  Clang Tools :: clang-tidy/checkers/modernize/use-trailing-return-type.cpp
+  Clang Tools :: clang-tidy/checkers/portability/std-allocator-const.cpp
+  Clang Tools :: clang-tidy/checkers/readability/identifier-naming.cpp
   Clang Tools :: clang-tidy/checkers/readability/static-accessed-through-instance-nesting-threshold.cpp
   Clang Tools :: clang-tidy/checkers/readability/static-accessed-through-instance.cpp
+  Clangd Unit Tests :: ./ClangdTests/AddUsingTest/Apply
   Clangd Unit Tests :: ./ClangdTests/ClangdAST/GetQualification
   Clangd Unit Tests :: ./ClangdTests/DefineInlineTest/TransformDeclRefs
   Clangd Unit Tests :: ./ClangdTests/DefineInlineTest/TransformTypeLocs
@@ -10,4 +19,8 @@ Failed Tests (12):
   Clangd Unit Tests :: ./ClangdTests/DefineOutlineTest/InCppFile
   Clangd Unit Tests :: ./ClangdTests/DefineOutlineTest/QualifyFunctionName
   Clangd Unit Tests :: ./ClangdTests/DefineOutlineTest/QualifyReturnValue
+  Clangd Unit Tests :: ./ClangdTests/Hover/All
   Clangd Unit Tests :: ./ClangdTests/SemanticHighlighting/GetsCorrectTokens
+  Clangd Unit Tests :: ./ClangdTests/TypeHints/NoQualifiers
+  Extra Tools Unit Tests :: clang-change-namespace/./ClangChangeNamespaceTests/ChangeNamespaceTest/InjectedClassNameInFriendDecl
+  Extra Tools Unit Tests :: clang-include-fixer/find-all-symbols/./FindAllSymbolsTests/FindAllSymbolsTest/CXXRecordSymbolsTemplate

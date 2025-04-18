@@ -2201,8 +2201,8 @@ protected:
   class TemplateSpecializationTypeBitfields {
     friend class TemplateSpecializationType;
 
-    LLVM_PREFERRED_TYPE(TypeBitfields)
-    unsigned : NumTypeBits;
+    LLVM_PREFERRED_TYPE(TypeWithKeywordBitfields)
+    unsigned : NumTypeWithKeywordBits;
 
     /// Whether this template specialization type is a substituted type alias.
     LLVM_PREFERRED_TYPE(bool)
@@ -6647,6 +6647,94 @@ public:
   }
 };
 
+/// The elaboration keyword that precedes a qualified type name or
+/// introduces an elaborated-type-specifier.
+enum class ElaboratedTypeKeyword {
+  /// The "struct" keyword introduces the elaborated-type-specifier.
+  Struct,
+
+  /// The "__interface" keyword introduces the elaborated-type-specifier.
+  Interface,
+
+  /// The "union" keyword introduces the elaborated-type-specifier.
+  Union,
+
+  /// The "class" keyword introduces the elaborated-type-specifier.
+  Class,
+
+  /// The "enum" keyword introduces the elaborated-type-specifier.
+  Enum,
+
+  /// The "typename" keyword precedes the qualified type name, e.g.,
+  /// \c typename T::type.
+  Typename,
+
+  /// No keyword precedes the qualified type name.
+  None
+};
+
+/// The kind of a tag type.
+enum class TagTypeKind {
+  /// The "struct" keyword.
+  Struct,
+
+  /// The "__interface" keyword.
+  Interface,
+
+  /// The "union" keyword.
+  Union,
+
+  /// The "class" keyword.
+  Class,
+
+  /// The "enum" keyword.
+  Enum
+};
+
+/// A helper class for Type nodes having an ElaboratedTypeKeyword.
+/// The keyword in stored in the free bits of the base class.
+/// Also provides a few static helpers for converting and printing
+/// elaborated type keyword and tag type kind enumerations.
+class TypeWithKeyword : public Type {
+protected:
+  TypeWithKeyword(ElaboratedTypeKeyword Keyword, TypeClass tc,
+                  QualType Canonical, TypeDependence Dependence)
+      : Type(tc, Canonical, Dependence) {
+    TypeWithKeywordBits.Keyword = llvm::to_underlying(Keyword);
+  }
+
+public:
+  ElaboratedTypeKeyword getKeyword() const {
+    return static_cast<ElaboratedTypeKeyword>(TypeWithKeywordBits.Keyword);
+  }
+
+  /// Converts a type specifier (DeclSpec::TST) into an elaborated type keyword.
+  static ElaboratedTypeKeyword getKeywordForTypeSpec(unsigned TypeSpec);
+
+  /// Converts a type specifier (DeclSpec::TST) into a tag type kind.
+  /// It is an error to provide a type specifier which *isn't* a tag kind here.
+  static TagTypeKind getTagTypeKindForTypeSpec(unsigned TypeSpec);
+
+  /// Converts a TagTypeKind into an elaborated type keyword.
+  static ElaboratedTypeKeyword getKeywordForTagTypeKind(TagTypeKind Tag);
+
+  /// Converts an elaborated type keyword into a TagTypeKind.
+  /// It is an error to provide an elaborated type keyword
+  /// which *isn't* a tag kind here.
+  static TagTypeKind getTagTypeKindForKeyword(ElaboratedTypeKeyword Keyword);
+
+  static bool KeywordIsTagTypeKind(ElaboratedTypeKeyword Keyword);
+
+  static StringRef getKeywordName(ElaboratedTypeKeyword Keyword);
+
+  static StringRef getTagTypeKindName(TagTypeKind Kind) {
+    return getKeywordName(getKeywordForTagTypeKind(Kind));
+  }
+
+  class CannotCastToThisType {};
+  static CannotCastToThisType classof(const Type *);
+};
+
 /// Represents a type template specialization; the template
 /// must be a class template, a type alias template, or a template
 /// template parameter.  A template which cannot be resolved to one of
@@ -6667,7 +6755,8 @@ public:
 /// TemplateArguments, followed by a QualType representing the
 /// non-canonical aliased type when the template is a type alias
 /// template.
-class TemplateSpecializationType : public Type, public llvm::FoldingSetNode {
+class TemplateSpecializationType : public TypeWithKeyword,
+                                   public llvm::FoldingSetNode {
   friend class ASTContext; // ASTContext creates these
 
   /// The name of the template being specialized.  This is
@@ -6679,8 +6768,8 @@ class TemplateSpecializationType : public Type, public llvm::FoldingSetNode {
   /// replacement must, recursively, be one of these).
   TemplateName Template;
 
-  TemplateSpecializationType(TemplateName T, bool IsAlias,
-                             ArrayRef<TemplateArgument> Args,
+  TemplateSpecializationType(ElaboratedTypeKeyword Keyword, TemplateName T,
+                             bool IsAlias, ArrayRef<TemplateArgument> Args,
                              QualType Underlying);
 
 public:
@@ -6847,94 +6936,6 @@ public:
   static bool classof(const Type *T) {
     return T->getTypeClass() == InjectedClassName;
   }
-};
-
-/// The elaboration keyword that precedes a qualified type name or
-/// introduces an elaborated-type-specifier.
-enum class ElaboratedTypeKeyword {
-  /// The "struct" keyword introduces the elaborated-type-specifier.
-  Struct,
-
-  /// The "__interface" keyword introduces the elaborated-type-specifier.
-  Interface,
-
-  /// The "union" keyword introduces the elaborated-type-specifier.
-  Union,
-
-  /// The "class" keyword introduces the elaborated-type-specifier.
-  Class,
-
-  /// The "enum" keyword introduces the elaborated-type-specifier.
-  Enum,
-
-  /// The "typename" keyword precedes the qualified type name, e.g.,
-  /// \c typename T::type.
-  Typename,
-
-  /// No keyword precedes the qualified type name.
-  None
-};
-
-/// The kind of a tag type.
-enum class TagTypeKind {
-  /// The "struct" keyword.
-  Struct,
-
-  /// The "__interface" keyword.
-  Interface,
-
-  /// The "union" keyword.
-  Union,
-
-  /// The "class" keyword.
-  Class,
-
-  /// The "enum" keyword.
-  Enum
-};
-
-/// A helper class for Type nodes having an ElaboratedTypeKeyword.
-/// The keyword in stored in the free bits of the base class.
-/// Also provides a few static helpers for converting and printing
-/// elaborated type keyword and tag type kind enumerations.
-class TypeWithKeyword : public Type {
-protected:
-  TypeWithKeyword(ElaboratedTypeKeyword Keyword, TypeClass tc,
-                  QualType Canonical, TypeDependence Dependence)
-      : Type(tc, Canonical, Dependence) {
-    TypeWithKeywordBits.Keyword = llvm::to_underlying(Keyword);
-  }
-
-public:
-  ElaboratedTypeKeyword getKeyword() const {
-    return static_cast<ElaboratedTypeKeyword>(TypeWithKeywordBits.Keyword);
-  }
-
-  /// Converts a type specifier (DeclSpec::TST) into an elaborated type keyword.
-  static ElaboratedTypeKeyword getKeywordForTypeSpec(unsigned TypeSpec);
-
-  /// Converts a type specifier (DeclSpec::TST) into a tag type kind.
-  /// It is an error to provide a type specifier which *isn't* a tag kind here.
-  static TagTypeKind getTagTypeKindForTypeSpec(unsigned TypeSpec);
-
-  /// Converts a TagTypeKind into an elaborated type keyword.
-  static ElaboratedTypeKeyword getKeywordForTagTypeKind(TagTypeKind Tag);
-
-  /// Converts an elaborated type keyword into a TagTypeKind.
-  /// It is an error to provide an elaborated type keyword
-  /// which *isn't* a tag kind here.
-  static TagTypeKind getTagTypeKindForKeyword(ElaboratedTypeKeyword Keyword);
-
-  static bool KeywordIsTagTypeKind(ElaboratedTypeKeyword Keyword);
-
-  static StringRef getKeywordName(ElaboratedTypeKeyword Keyword);
-
-  static StringRef getTagTypeKindName(TagTypeKind Kind) {
-    return getKeywordName(getKeywordForTagTypeKind(Kind));
-  }
-
-  class CannotCastToThisType {};
-  static CannotCastToThisType classof(const Type *);
 };
 
 /// Represents a type that was referred to using an elaborated type

@@ -224,9 +224,8 @@ static bool hasRecursiveCallInPath(const FunctionDecl *FD, CFGBlock &Block) {
     if (const DeclRefExpr *DRE =
             dyn_cast<DeclRefExpr>(CE->getCallee()->IgnoreParenImpCasts()))
       if (NestedNameSpecifier *NNS = DRE->getQualifier())
-        if (auto *ET = dyn_cast_or_null<ElaboratedType>(NNS->getAsType()))
-          if (isa<TemplateSpecializationType>(ET->getNamedType()))
-            continue;
+        if (isa_and_nonnull<TemplateSpecializationType>(NNS->getAsType()))
+          continue;
 
     const CXXMemberCallExpr *MCE = dyn_cast<CXXMemberCallExpr>(CE);
     if (!MCE || isa<CXXThisExpr>(MCE->getImplicitObjectArgument()) ||

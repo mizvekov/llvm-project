@@ -43,11 +43,10 @@ using AT = A<int[3], int, int, short>;
 // CHECK:   `-ParmVarDecl {{.*}} 'short (*)[4]'
 // CHECK: FunctionProtoType {{.*}} 'auto (X<Ps...>, Ts (*)[Ns]...) -> A<T, Ts...>' dependent trailing_return
 // CHECK: |-InjectedClassNameType {{.*}} 'A<T, Ts...>' dependent
-// CHECK: |-ElaboratedType {{.*}} 'X<Ps...>' sugar dependent
-// CHECK: | `-TemplateSpecializationType {{.*}} 'X<Ps...>' dependent
-// CHECK: |   `-TemplateArgument expr
-// CHECK: |     `-PackExpansionExpr {{.*}} 'T *'
-// CHECK: |       `-DeclRefExpr {{.*}} 'T *' NonTypeTemplateParm {{.*}} 'Ps' 'T *'
+// CHECK: |-TemplateSpecializationType {{.*}} 'X<Ps...>' dependent
+// CHECK: | `-TemplateArgument expr
+// CHECK: |   `-PackExpansionExpr {{.*}} 'T *'
+// CHECK: |     `-DeclRefExpr {{.*}} 'T *' NonTypeTemplateParm {{.*}} 'Ps' 'T *'
 // CHECK: `-PackExpansionType {{.*}} 'Ts (*)[Ns]...' dependent
 // CHECK:   `-PointerType {{.*}} 'Ts (*)[Ns]' dependent contains_unexpanded_pack
 // CHECK:     `-ParenType {{.*}} 'Ts[Ns]' sugar dependent contains_unexpanded_pack
@@ -118,9 +117,8 @@ using CT = C<int>;
 // CHECK: |-InjectedClassNameType {{.*}} 'C<A>' dependent
 // CHECK: |-TemplateTypeParmType {{.*}} 'A' dependent depth 0 index 0
 // CHECK: | `-TemplateTypeParm {{.*}} 'A'
-// CHECK: |-ElaboratedType {{.*}} 'Y<T>' sugar dependent
-// CHECK: | `-TemplateSpecializationType {{.*}} 'Y<T>' dependent
-// CHECK: |   `-TemplateArgument template
+// CHECK: |-TemplateSpecializationType {{.*}} 'Y<T>' dependent
+// CHECK: | `-TemplateArgument template
 // CHECK: `-TemplateTypeParmType {{.*}} 'U' dependent depth 0 index 2
 
 template<typename ...T> struct D { // expected-note {{candidate}} \
@@ -323,22 +321,21 @@ namespace TTP {
 // CHECK-NEXT:  | `-TemplateTypeParmDecl {{.+}} class depth 1 index 0{{$}}
 // CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} 'auto (TT<T>) -> B<T>'{{$}}
 // CHECK-NEXT:  | `-ParmVarDecl {{.+}} 'TT<T>'{{$}}
-// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} 'auto (A<int>) -> TTP::B<int>'
+// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} 'auto (TTP::A<int>) -> TTP::B<int>'
 // CHECK-NEXT:    |-TemplateArgument type 'int'
 // CHECK-NEXT:    | `-BuiltinType {{.+}} 'int'{{$}}
 // CHECK-NEXT:    |-TemplateArgument template 'TTP::A'{{$}}
 // CHECK-NEXT:    | `-ClassTemplateDecl {{.+}} A{{$}}
-// CHECK-NEXT:    `-ParmVarDecl {{.+}} 'A<int>':'TTP::A<int>'{{$}}
+// CHECK-NEXT:    `-ParmVarDecl {{.+}} 'TTP::A<int>'{{$}}
 // CHECK-NEXT:  FunctionProtoType {{.+}} 'auto (TT<T>) -> B<T>' dependent trailing_return cdecl{{$}}
 // CHECK-NEXT:  |-InjectedClassNameType {{.+}} 'B<T>' dependent{{$}}
 // CHECK-NEXT:  | `-CXXRecord {{.+}} 'B'{{$}}
-// CHECK-NEXT:  `-ElaboratedType {{.+}} 'TT<T>' sugar dependent{{$}}
-// CHECK-NEXT:    `-TemplateSpecializationType {{.+}} 'TT<T>' dependent{{$}}
-// CHECK-NEXT:      |-name: 'TT':'template-parameter-0-1' qualified
-// CHECK-NEXT:      | `-TemplateTemplateParmDecl {{.+}} depth 0 index 1
-// CHECK-NEXT:      `-TemplateArgument type 'T':'type-parameter-0-0'{{$}}
-// CHECK-NEXT:        `-TemplateTypeParmType {{.+}} 'T' dependent depth 0 index 0{{$}}
-// CHECK-NEXT:          `-TemplateTypeParm {{.+}} 'T'{{$}}
+// CHECK-NEXT:  `-TemplateSpecializationType {{.+}} 'TT<T>' dependent{{$}}
+// CHECK-NEXT:    |-name: 'TT':'template-parameter-0-1' qualified
+// CHECK-NEXT:    | `-TemplateTemplateParmDecl {{.+}} depth 0 index 1
+// CHECK-NEXT:    `-TemplateArgument type 'T':'type-parameter-0-0'{{$}}
+// CHECK-NEXT:      `-TemplateTypeParmType {{.+}} 'T' dependent depth 0 index 0{{$}}
+// CHECK-NEXT:        `-TemplateTypeParm {{.+}} 'T'{{$}}
 
 namespace GH64625 {
 
@@ -859,13 +856,12 @@ CC c{};
 // CHECK-NEXT:  |   `-IntegerLiteral {{.+}} 'int' 42
 // CHECK-NEXT:  |-TemplateTypeParmDecl {{.+}} class depth 0 index 1 U
 // CHECK-NEXT:  | `-TemplateArgument type 'A<decltype(N)>'
-// CHECK-NEXT:  |   `-ElaboratedType {{.+}} 'A<decltype(N)>' sugar dependent
-// CHECK-NEXT:  |     `-TemplateSpecializationType {{.+}} 'A<decltype(N)>' dependent
-// CHECK-NEXT:  |       |-name: 'A':'GH133132::A' qualified
-// CHECK-NEXT:  |       | `-ClassTemplateDecl {{.+}} A
-// CHECK-NEXT:  |       `-TemplateArgument type 'decltype(N)'
-// CHECK-NEXT:  |         `-DecltypeType {{.+}} 'decltype(N)' dependent
-// CHECK-NEXT:  |           `-DeclRefExpr {{.+}} 'int' NonTypeTemplateParm {{.+}} 'N' 'int'
+// CHECK-NEXT:  |   `-TemplateSpecializationType {{.+}} 'A<decltype(N)>' dependent
+// CHECK-NEXT:  |     |-name: 'A':'GH133132::A' qualified
+// CHECK-NEXT:  |     | `-ClassTemplateDecl {{.+}} A
+// CHECK-NEXT:  |     `-TemplateArgument type 'decltype(N)'
+// CHECK-NEXT:  |       `-DecltypeType {{.+}} 'decltype(N)' dependent
+// CHECK-NEXT:  |         `-DeclRefExpr {{.+}} 'int' NonTypeTemplateParm {{.+}} 'N' 'int'
 // CHECK-NEXT:  |-TypeTraitExpr {{.+}} 'bool' __is_deducible
 // CHECK-NEXT:  | |-DeducedTemplateSpecializationType {{.+}} 'GH133132::CC' dependent
 // CHECK-NEXT:  | | `-name: 'GH133132::CC'

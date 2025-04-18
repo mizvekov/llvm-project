@@ -962,13 +962,19 @@ public:
       TypeLoc TL = NNSLoc.getTypeLoc();
       switch (TL.getTypeLocClass()) {
       case TypeLoc::Elaborated: {
-        TypeLoc NT = TL.castAs<ElaboratedTypeLoc>().getNamedTypeLoc();
-        if (NT.getAs<TemplateSpecializationTypeLoc>())
-          return buildSimpleTemplateName(NT.getLocalSourceRange());
-        return buildIdentifier(NT.getLocalSourceRange());
+        return buildIdentifier(TL.castAs<ElaboratedTypeLoc>()
+                                   .getNamedTypeLoc()
+                                   .getLocalSourceRange());
       }
       case TypeLoc::DependentName:
         return buildIdentifier(TL.castAs<DependentNameTypeLoc>().getNameLoc());
+      case TypeLoc::TemplateSpecialization: {
+        auto TST = TL.castAs<TemplateSpecializationTypeLoc>();
+        SourceLocation BeginLoc = TST.getTemplateKeywordLoc();
+        if (BeginLoc.isInvalid())
+          BeginLoc = TST.getTemplateNameLoc();
+        return buildSimpleTemplateName({BeginLoc, TST.getEndLoc()});
+      }
       case TypeLoc::DependentTemplateSpecialization: {
         auto DT = TL.castAs<DependentTemplateSpecializationTypeLoc>();
         SourceLocation BeginLoc = DT.getTemplateKeywordLoc();

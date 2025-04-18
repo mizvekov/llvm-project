@@ -1954,6 +1954,12 @@ NestedNameSpecifier *Type::getPrefix() const {
     return cast<ElaboratedType>(this)->getQualifier();
   case Type::DependentName:
     return cast<DependentNameType>(this)->getQualifier();
+  case Type::TemplateSpecialization: {
+    QualifiedTemplateName *S = cast<TemplateSpecializationType>(this)
+                                   ->getTemplateName()
+                                   .getAsAdjustedQualifiedTemplateName();
+    return S ? S->getQualifier() : nullptr;
+  }
   case Type::DependentTemplateSpecialization:
     return cast<DependentTemplateSpecializationType>(this)
         ->getDependentTemplateName()
@@ -3339,6 +3345,8 @@ bool Type::isElaboratedTypeSpecifier() const {
   ElaboratedTypeKeyword Keyword;
   if (const auto *Elab = dyn_cast<ElaboratedType>(this))
     Keyword = Elab->getKeyword();
+  else if (const auto *TST = dyn_cast<TemplateSpecializationType>(this))
+    Keyword = TST->getKeyword();
   else if (const auto *DepName = dyn_cast<DependentNameType>(this))
     Keyword = DepName->getKeyword();
   else if (const auto *DepTST =
@@ -4405,16 +4413,17 @@ bool TemplateSpecializationType::anyInstantiationDependentTemplateArguments(
 }
 
 TemplateSpecializationType::TemplateSpecializationType(
-    TemplateName T, bool IsAlias, ArrayRef<TemplateArgument> Args,
-    QualType Underlying)
-    : Type(TemplateSpecialization,
-           Underlying.isNull() ? QualType(this, 0)
-                               : Underlying.getCanonicalType(),
-           (Underlying.isNull()
-                ? TypeDependence::DependentInstantiation
-                : toSemanticDependence(Underlying->getDependence())) |
-               (toTypeDependence(T.getDependence()) &
-                TypeDependence::UnexpandedPack)),
+    ElaboratedTypeKeyword Keyword, TemplateName T, bool IsAlias,
+    ArrayRef<TemplateArgument> Args, QualType Underlying)
+    : TypeWithKeyword(
+          Keyword, TemplateSpecialization,
+          Underlying.isNull() ? QualType(this, 0)
+                              : Underlying.getCanonicalType(),
+          (Underlying.isNull()
+               ? TypeDependence::DependentInstantiation
+               : toSemanticDependence(Underlying->getDependence())) |
+              (toTypeDependence(T.getDependence()) &
+               TypeDependence::UnexpandedPack)),
       Template(T) {
   TemplateSpecializationTypeBits.NumArgs = Args.size();
   TemplateSpecializationTypeBits.TypeAlias = IsAlias;

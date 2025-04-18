@@ -11553,13 +11553,16 @@ public:
 
   void NoteAllFoundTemplates(TemplateName Name);
 
-  QualType CheckTemplateIdType(TemplateName Template,
+  QualType CheckTemplateIdType(ElaboratedTypeKeyword Keyword,
+                               TemplateName Template,
                                SourceLocation TemplateLoc,
                                TemplateArgumentListInfo &TemplateArgs);
 
   TypeResult
-  ActOnTemplateIdType(Scope *S, CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
-                      TemplateTy Template, const IdentifierInfo *TemplateII,
+  ActOnTemplateIdType(Scope *S, ElaboratedTypeKeyword ElaboratedKeyword,
+                      SourceLocation ElaboratedKeywordLoc, CXXScopeSpec &SS,
+                      SourceLocation TemplateKWLoc, TemplateTy Template,
+                      const IdentifierInfo *TemplateII,
                       SourceLocation TemplateIILoc, SourceLocation LAngleLoc,
                       ASTTemplateArgsPtr TemplateArgs, SourceLocation RAngleLoc,
                       bool IsCtorOrDtorName = false, bool IsClassName = false,

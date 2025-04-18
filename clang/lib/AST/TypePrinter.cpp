@@ -1658,6 +1658,10 @@ void TypePrinter::printTemplateId(const TemplateSpecializationType *T,
                                   raw_ostream &OS, bool FullyQualify) {
   IncludeStrongLifetimeRAII Strong(Policy);
 
+  if (ElaboratedTypeKeyword K = T->getKeyword();
+      K != ElaboratedTypeKeyword::None)
+    OS << TypeWithKeyword::getKeywordName(K) << ' ';
+
   TemplateDecl *TD =
       T->getTemplateName().getAsTemplateDecl(/*IgnoreDeduced=*/true);
   // FIXME: Null TD never exercised in test suite.
@@ -1667,7 +1671,10 @@ void TypePrinter::printTemplateId(const TemplateSpecializationType *T,
 
     OS << TD->getName();
   } else {
-    T->getTemplateName().print(OS, Policy, TemplateName::Qualified::None);
+    T->getTemplateName().print(OS, Policy,
+                               !Policy.SuppressScope
+                                   ? TemplateName::Qualified::AsWritten
+                                   : TemplateName::Qualified::None);
   }
 
   DefaultTemplateArgsPolicyRAII TemplateArgs(Policy);
@@ -1712,7 +1719,7 @@ void TypePrinter::printElaboratedBefore(const ElaboratedType *T,
     return;
   }
 
-  if (Policy.SuppressElaboration) {
+  if (Policy.FullyQualifiedName) {
     printBefore(T->getNamedType(), OS);
     return;
   }
@@ -1748,7 +1755,7 @@ void TypePrinter::printElaboratedAfter(const ElaboratedType *T,
   if (Policy.IncludeTagDefinition && T->getOwnedTagDecl())
     return;
 
-  if (Policy.SuppressElaboration) {
+  if (Policy.FullyQualifiedName) {
     printAfter(T->getNamedType(), OS);
     return;
   }

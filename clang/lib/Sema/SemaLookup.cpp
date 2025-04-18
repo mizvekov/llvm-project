@@ -4542,6 +4542,18 @@ static void getNestedNameSpecifierIdentifiers(
         Identifiers.push_back(DT->getIdentifier());
         return;
       }
+      case Type::TemplateSpecialization: {
+        TemplateName Name =
+            cast<TemplateSpecializationType>(T)->getTemplateName();
+        if (const QualifiedTemplateName *QTN =
+                Name.getAsAdjustedQualifiedTemplateName()) {
+          getNestedNameSpecifierIdentifiers(QTN->getQualifier(), Identifiers);
+          Name = QTN->getUnderlyingTemplate();
+        }
+        if (const auto *TD = Name.getAsTemplateDecl(/*IgnoreDeduced=*/true))
+          Identifiers.push_back(TD->getIdentifier());
+        return;
+      }
       case Type::DependentTemplateSpecialization: {
         const DependentTemplateStorage &S =
             cast<DependentTemplateSpecializationType>(T)
@@ -4562,8 +4574,8 @@ static void getNestedNameSpecifierIdentifiers(
       case Type::Decltype:
         return;
       default:
-        T->dump();
-        llvm_unreachable("unexpected type in NNS");
+        Identifiers.push_back(QualType(T, 0).getBaseTypeIdentifier());
+        return;
       }
     }
     break;
@@ -4704,9 +4716,7 @@ void TypoCorrectionConsumer::addNamespaces(
   if (NestedNameSpecifier *NNS =
           (SS && SS->isValid()) ? SS->getScopeRep() : nullptr) {
     if (const Type *T = NNS->getAsType())
-      SSIsTemplate = T->getTypeClass() == Type::Elaborated &&
-                     cast<ElaboratedType>(T)->getNamedType()->getTypeClass() ==
-                         Type::TemplateSpecialization;
+      SSIsTemplate = T->getTypeClass() == Type::TemplateSpecialization;
   }
   // Do not transform this into an iterator-based loop. The loop body can
   // trigger the creation of further types (through lazy deserialization) and

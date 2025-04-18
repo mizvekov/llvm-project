@@ -1479,16 +1479,29 @@ bool CursorVisitor::VisitTemplateParameters(
   return false;
 }
 
-bool CursorVisitor::VisitTemplateName(TemplateName Name, SourceLocation Loc) {
+bool CursorVisitor::VisitTemplateName(TemplateName Name, SourceLocation NameLoc,
+                                      NestedNameSpecifierLoc NNS) {
   switch (Name.getKind()) {
+  case TemplateName::QualifiedTemplate: {
+    const QualifiedTemplateName *QTN = Name.getAsQualifiedTemplateName();
+    // FIXME: As a DeducedTemplateSpecialization uses an ElaboratedType to carry
+    // the qualifiers, these will be visited as part of the ElaboratedTypeLoc
+    // visitation. Once it is updated to carry the QualifierLoc on its own, this
+    // can be enabled unconditionally.
+    if (NNS) {
+      assert(QTN->getQualifier() == NNS.getNestedNameSpecifier());
+      if (VisitNestedNameSpecifierLoc(NNS))
+        return true;
+    }
+    return VisitTemplateName(QTN->getUnderlyingTemplate(), NameLoc, /*NNS=*/{});
+  }
   case TemplateName::Template:
   case TemplateName::UsingTemplate:
-  case TemplateName::QualifiedTemplate: // FIXME: Visit nested-name-specifier.
-    return Visit(MakeCursorTemplateRef(Name.getAsTemplateDecl(), Loc, TU));
+    return Visit(MakeCursorTemplateRef(Name.getAsTemplateDecl(), NameLoc, TU));
 
   case TemplateName::OverloadedTemplate:
     // Visit the overloaded template set.
-    if (Visit(MakeCursorOverloadedDeclRef(Name, Loc, TU)))
+    if (Visit(MakeCursorOverloadedDeclRef(Name, NameLoc, TU)))
       return true;
 
     return false;
@@ -1503,11 +1516,11 @@ bool CursorVisitor::VisitTemplateName(TemplateName Name, SourceLocation Loc) {
 
   case TemplateName::SubstTemplateTemplateParm:
     return Visit(MakeCursorTemplateRef(
-        Name.getAsSubstTemplateTemplateParm()->getParameter(), Loc, TU));
+        Name.getAsSubstTemplateTemplateParm()->getParameter(), NameLoc, TU));
 
   case TemplateName::SubstTemplateTemplateParmPack:
     return Visit(MakeCursorTemplateRef(
-        Name.getAsSubstTemplateTemplateParmPack()->getParameterPack(), Loc,
+        Name.getAsSubstTemplateTemplateParmPack()->getParameterPack(), NameLoc,
         TU));
 
   case TemplateName::DeducedTemplate:
@@ -1555,7 +1568,8 @@ bool CursorVisitor::VisitTemplateArgumentLoc(const TemplateArgumentLoc &TAL) {
       return true;
 
     return VisitTemplateName(TAL.getArgument().getAsTemplateOrTemplatePattern(),
-                             TAL.getTemplateNameLoc());
+                             TAL.getTemplateNameLoc(),
+                             TAL.getTemplateQualifierLoc());
   }
 
   llvm_unreachable("Invalid TemplateArgument::Kind!");
@@ -1780,8 +1794,11 @@ bool CursorVisitor::VisitAdjustedTypeLoc(AdjustedTypeLoc TL) {
 
 bool CursorVisitor::VisitDeducedTemplateSpecializationTypeLoc(
     DeducedTemplateSpecializationTypeLoc TL) {
+  // FIXME: DeducedTemplateSpecializationTypeLoc lacks a QualifierLoc, relying
+  // instead on a ElaboratedTypeLoc. The qualifiers will instead be visited
+  // there.
   if (VisitTemplateName(TL.getTypePtr()->getTemplateName(),
-                        TL.getTemplateNameLoc()))
+                        TL.getTemplateNameLoc(), /*NNS=*/{}))
     return true;
 
   return false;
@@ -1791,7 +1808,7 @@ bool CursorVisitor::VisitTemplateSpecializationTypeLoc(
     TemplateSpecializationTypeLoc TL) {
   // Visit the template name.
   if (VisitTemplateName(TL.getTypePtr()->getTemplateName(),
-                        TL.getTemplateNameLoc()))
+                        TL.getTemplateNameLoc(), TL.getQualifierLoc()))
     return true;
 
   // Visit the template arguments.

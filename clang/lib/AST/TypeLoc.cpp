@@ -487,6 +487,8 @@ NestedNameSpecifierLoc TypeLoc::getPrefix() const {
     return castAs<ElaboratedTypeLoc>().getQualifierLoc();
   case TypeLoc::DependentName:
     return castAs<DependentNameTypeLoc>().getQualifierLoc();
+  case TypeLoc::TemplateSpecialization:
+    return castAs<TemplateSpecializationTypeLoc>().getQualifierLoc();
   case TypeLoc::DependentTemplateSpecialization:
     return castAs<DependentTemplateSpecializationTypeLoc>().getQualifierLoc();
   default:

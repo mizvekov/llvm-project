@@ -719,6 +719,9 @@ let Class = DependentAddressSpaceType in {
 }
 
 let Class = TemplateSpecializationType in {
+  def : Property<"keyword", ElaboratedTypeKeyword> {
+    let Read = [{ node->getKeyword() }];
+  }
   def : Property<"templateName", TemplateName> {
     let Read = [{ node->getTemplateName() }];
   }
@@ -731,7 +734,7 @@ let Class = TemplateSpecializationType in {
   }
 
   def : Creator<[{
-    return ctx.getTemplateSpecializationType(templateName, args, std::nullopt, UnderlyingType);
+    return ctx.getTemplateSpecializationType(keyword, templateName, args, std::nullopt, UnderlyingType);
   }]>;
 }
 

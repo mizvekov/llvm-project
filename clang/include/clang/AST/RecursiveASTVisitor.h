@@ -845,6 +845,15 @@ bool RecursiveASTVisitor<Derived>::TraverseNestedNameSpecifierLoc(
       return true;
     case TypeLoc::DependentName:
       return true;
+    case TypeLoc::TemplateSpecialization: {
+      auto TST = TL.castAs<TemplateSpecializationTypeLoc>();
+      TRY_TO(TraverseTemplateName(
+          TemplateName(TST.getTypePtr()->getTemplateName().getAsTemplateDecl(
+              /*IgnoreDeduced=*/true))));
+      for (unsigned I = 0, E = TST.getNumArgs(); I != E; ++I)
+        TRY_TO(TraverseTemplateArgumentLoc(TST.getArgLoc(I)));
+      return true;
+    }
     case TypeLoc::DependentTemplateSpecialization: {
       auto DTL = TL.castAs<DependentTemplateSpecializationTypeLoc>();
       for (unsigned I = 0, E = DTL.getNumArgs(); I != E; ++I)

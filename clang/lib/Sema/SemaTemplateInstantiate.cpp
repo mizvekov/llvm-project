@@ -347,13 +347,7 @@ Response HandleFunctionTemplateDecl(Sema &SemaRef,
          Ty = std::exchange(NextTy, nullptr)) {
       if (NestedNameSpecifier *P = Ty->getPrefix())
         NextTy = P->getAsType();
-
-      const auto *ETy = dyn_cast<ElaboratedType>(Ty);
-      if (!ETy)
-        continue;
-
-      const auto *TSTy =
-          dyn_cast<TemplateSpecializationType>(ETy->getNamedType());
+      const auto *TSTy = dyn_cast<TemplateSpecializationType>(Ty);
       if (!TSTy)
         continue;
 

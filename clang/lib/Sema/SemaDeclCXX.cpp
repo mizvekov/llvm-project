@@ -1141,7 +1141,8 @@ static bool lookupStdTypeTraitMember(Sema &S, LookupResult &TraitMemberLookup,
   }
 
   // Build the template-id.
-  QualType TraitTy = S.CheckTemplateIdType(TemplateName(TraitTD), Loc, Args);
+  QualType TraitTy = S.CheckTemplateIdType(ElaboratedTypeKeyword::None,
+                                           TemplateName(TraitTD), Loc, Args);
   if (TraitTy.isNull())
     return true;
   if (!S.isCompleteType(Loc, TraitTy)) {
@@ -12300,13 +12301,8 @@ static QualType BuildStdClassTemplate(Sema &S, ClassTemplateDecl *CTD,
   auto TSI = S.Context.getTrivialTypeSourceInfo(TypeParam, Loc);
   Args.addArgument(TemplateArgumentLoc(TemplateArgument(TypeParam), TSI));
 
-  QualType T = S.CheckTemplateIdType(TemplateName(CTD), Loc, Args);
-  if (T.isNull())
-    return QualType();
-
-  return S.Context.getElaboratedType(
-      ElaboratedTypeKeyword::None,
-      NestedNameSpecifier::Create(S.Context, nullptr, S.getStdNamespace()), T);
+  return S.CheckTemplateIdType(ElaboratedTypeKeyword::None, TemplateName(CTD),
+                               Loc, Args);
 }
 
 QualType Sema::BuildStdInitializerList(QualType Element, SourceLocation Loc) {

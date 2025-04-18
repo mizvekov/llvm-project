@@ -2338,8 +2338,7 @@ TEST_P(ASTMatchersTest,
   }
   EXPECT_TRUE(matches(
       "template <typename T> class C {}; C<char> var;",
-      varDecl(hasName("var"), hasTypeLoc(elaboratedTypeLoc(hasNamedTypeLoc(
-                                  templateSpecializationTypeLoc()))))));
+      varDecl(hasName("var"), hasTypeLoc(templateSpecializationTypeLoc()))));
 }
 
 TEST_P(

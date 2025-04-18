@@ -19,24 +19,22 @@ using ns::S2;
 template<typename T>
 using A = S<T>;
 // CHECK:      TypeAliasDecl
-// CHECK-NEXT: `-ElaboratedType {{.*}} 'S<T>' sugar dependent
-// CHECK-NEXT:   `-TemplateSpecializationType {{.*}} 'S<T>' dependent
-// CHECK-NEXT:     |-name: 'S':'ns::S' qualified
-// CHECk-NEXT:     | |-UsingShadowDecl {{.+}} ClassTemplate {{.+}} 'S'
+// CHECK-NEXT: `-TemplateSpecializationType {{.*}} 'S<T>' dependent
+// CHECK-NEXT:   |-name: 'S':'ns::S' qualified
+// CHECk-NEXT:   | |-UsingShadowDecl {{.+}} ClassTemplate {{.+}} 'S'
 
 // TemplateName in TemplateArgument.
 template <template <typename> class T> class X {};
 using B = X<S>;
 // CHECK:      TypeAliasDecl
-// CHECK-NEXT: `-ElaboratedType {{.*}} 'X<S>' sugar
-// CHECK-NEXT:   `-TemplateSpecializationType {{.*}} 'X<S>' sugar
-// CHECK-NEXT:     |-name: 'X' qualified
-// CHECK-NEXT:     | `-ClassTemplateDecl {{.+}} X
-// CHECK-NEXT:     |-TemplateArgument template 'S':'ns::S' qualified
-// CHECK-NEXT:     | |-UsingShadowDecl {{.*}} implicit ClassTemplate {{.*}} 'S'
-// CHECK-NEXT:     | `-target: ClassTemplateDecl {{.*}} S
-// CHECK-NEXT:     `-RecordType {{.*}} 'X<ns::S>'
-// CHECK-NEXT:       `-ClassTemplateSpecialization {{.*}} 'X'
+// CHECK-NEXT: `-TemplateSpecializationType {{.*}} 'X<S>' sugar
+// CHECK-NEXT:   |-name: 'X' qualified
+// CHECK-NEXT:   | `-ClassTemplateDecl {{.+}} X
+// CHECK-NEXT:   |-TemplateArgument template 'S':'ns::S' qualified
+// CHECK-NEXT:   | |-UsingShadowDecl {{.*}} implicit ClassTemplate {{.*}} 'S'
+// CHECK-NEXT:   | `-target: ClassTemplateDecl {{.*}} S
+// CHECK-NEXT:   `-RecordType {{.*}} 'X<ns::S>'
+// CHECK-NEXT:     `-ClassTemplateSpecialization {{.*}} 'X'
 
 // TemplateName in DeducedTemplateSpecializationType.
 S DeducedTemplateSpecializationT(123);

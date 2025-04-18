@@ -2701,8 +2701,10 @@ bool Parser::ParseUnqualifiedIdTemplateId(
 
   // Constructor and destructor names.
   TypeResult Type = Actions.ActOnTemplateIdType(
-      getCurScope(), SS, TemplateKWLoc, Template, Name, NameLoc, LAngleLoc,
-      TemplateArgsPtr, RAngleLoc, /*IsCtorOrDtorName=*/true);
+      getCurScope(), ElaboratedTypeKeyword::None,
+      /*ElaboratedKeywordLoc=*/SourceLocation(), SS, TemplateKWLoc, Template,
+      Name, NameLoc, LAngleLoc, TemplateArgsPtr, RAngleLoc,
+      /*IsCtorOrDtorName=*/true);
   if (Type.isInvalid())
     return true;
 

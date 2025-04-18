@@ -8747,16 +8747,13 @@ ExprResult Sema::ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
     TemplateIdAnnotation *TemplateId = SecondTypeName.TemplateId;
     ASTTemplateArgsPtr TemplateArgsPtr(TemplateId->getTemplateArgs(),
                                        TemplateId->NumArgs);
-    TypeResult T = ActOnTemplateIdType(S,
-                                       SS,
-                                       TemplateId->TemplateKWLoc,
-                                       TemplateId->Template,
-                                       TemplateId->Name,
-                                       TemplateId->TemplateNameLoc,
-                                       TemplateId->LAngleLoc,
-                                       TemplateArgsPtr,
-                                       TemplateId->RAngleLoc,
-                                       /*IsCtorOrDtorName*/true);
+    TypeResult T = ActOnTemplateIdType(
+        S, ElaboratedTypeKeyword::None,
+        /*ElaboratedKeywordLoc=*/SourceLocation(), SS,
+        TemplateId->TemplateKWLoc, TemplateId->Template, TemplateId->Name,
+        TemplateId->TemplateNameLoc, TemplateId->LAngleLoc, TemplateArgsPtr,
+        TemplateId->RAngleLoc,
+        /*IsCtorOrDtorName*/ true);
     if (T.isInvalid() || !T.get()) {
       // Recover by assuming we had the right type all along.
       DestructedType = ObjectType;
@@ -8800,16 +8797,13 @@ ExprResult Sema::ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
       TemplateIdAnnotation *TemplateId = FirstTypeName.TemplateId;
       ASTTemplateArgsPtr TemplateArgsPtr(TemplateId->getTemplateArgs(),
                                          TemplateId->NumArgs);
-      TypeResult T = ActOnTemplateIdType(S,
-                                         SS,
-                                         TemplateId->TemplateKWLoc,
-                                         TemplateId->Template,
-                                         TemplateId->Name,
-                                         TemplateId->TemplateNameLoc,
-                                         TemplateId->LAngleLoc,
-                                         TemplateArgsPtr,
-                                         TemplateId->RAngleLoc,
-                                         /*IsCtorOrDtorName*/true);
+      TypeResult T = ActOnTemplateIdType(
+          S, ElaboratedTypeKeyword::None,
+          /*ElaboratedKeywordLoc=*/SourceLocation(), SS,
+          TemplateId->TemplateKWLoc, TemplateId->Template, TemplateId->Name,
+          TemplateId->TemplateNameLoc, TemplateId->LAngleLoc, TemplateArgsPtr,
+          TemplateId->RAngleLoc,
+          /*IsCtorOrDtorName*/ true);
       if (T.isInvalid() || !T.get()) {
         // Recover by dropping this type.
         ScopeType = QualType();

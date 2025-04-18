@@ -2177,6 +2177,9 @@ void TextNodeDumper::VisitTemplateSpecializationType(
     const TemplateSpecializationType *T) {
   if (T->isTypeAlias())
     OS << " alias";
+  if (ElaboratedTypeKeyword K = T->getKeyword();
+      K != ElaboratedTypeKeyword::None)
+    OS << ' ' << TypeWithKeyword::getKeywordName(K);
   dumpTemplateName(T->getTemplateName(), "name");
 }
 

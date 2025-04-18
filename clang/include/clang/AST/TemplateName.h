@@ -335,6 +335,10 @@ public:
   /// structure, if any.
   QualifiedTemplateName *getAsQualifiedTemplateName() const;
 
+  /// Retrieve the underlying qualified template name,
+  /// looking through underlying nodes.
+  QualifiedTemplateName *getAsAdjustedQualifiedTemplateName() const;
+
   /// Retrieve the underlying dependent template name
   /// structure, if any.
   DependentTemplateName *getAsDependentTemplateName() const;

@@ -876,71 +876,60 @@ int main()
 // CHECK-NEXT:      "inner": [
 // CHECK-NEXT:       {
 // CHECK-NEXT:        "id": "0x{{.*}}",
-// CHECK-NEXT:        "kind": "ElaboratedType",
+// CHECK-NEXT:        "kind": "TemplateSpecializationType",
 // CHECK-NEXT:        "type": {
 // CHECK-NEXT:         "qualType": "integral_constant<bool, _Val>"
 // CHECK-NEXT:        },
 // CHECK-NEXT:        "isDependent": true,
 // CHECK-NEXT:        "isInstantiationDependent": true,
+// CHECK-NEXT:        "templateName": "integral_constant",
 // CHECK-NEXT:        "inner": [
 // CHECK-NEXT:         {
-// CHECK-NEXT:          "id": "0x{{.*}}",
-// CHECK-NEXT:          "kind": "TemplateSpecializationType",
+// CHECK-NEXT:          "kind": "TemplateArgument",
 // CHECK-NEXT:          "type": {
-// CHECK-NEXT:           "qualType": "integral_constant<bool, _Val>"
+// CHECK-NEXT:           "qualType": "bool"
 // CHECK-NEXT:          },
-// CHECK-NEXT:          "isDependent": true,
-// CHECK-NEXT:          "isInstantiationDependent": true,
-// CHECK-NEXT:          "templateName": "integral_constant",
 // CHECK-NEXT:          "inner": [
 // CHECK-NEXT:           {
-// CHECK-NEXT:            "kind": "TemplateArgument",
+// CHECK-NEXT:            "id": "0x{{.*}}",
+// CHECK-NEXT:            "kind": "BuiltinType",
+// CHECK-NEXT:            "type": {
+// CHECK-NEXT:             "qualType": "bool"
+// CHECK-NEXT:            }
+// CHECK-NEXT:           }
+// CHECK-NEXT:          ]
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:          "kind": "TemplateArgument",
+// CHECK-NEXT:          "isExpr": true,
+// CHECK-NEXT:          "inner": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:            "id": "0x{{.*}}",
+// CHECK-NEXT:            "kind": "DeclRefExpr",
+// CHECK-NEXT:            "range": {
+// CHECK-NEXT:             "begin": {
+// CHECK-NEXT:              "offset": 554,
+// CHECK-NEXT:              "col": 47,
+// CHECK-NEXT:              "tokLen": 4
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "end": {
+// CHECK-NEXT:              "offset": 554,
+// CHECK-NEXT:              "col": 47,
+// CHECK-NEXT:              "tokLen": 4
+// CHECK-NEXT:             }
+// CHECK-NEXT:            },
 // CHECK-NEXT:            "type": {
 // CHECK-NEXT:             "qualType": "bool"
 // CHECK-NEXT:            },
-// CHECK-NEXT:            "inner": [
-// CHECK-NEXT:             {
-// CHECK-NEXT:              "id": "0x{{.*}}",
-// CHECK-NEXT:              "kind": "BuiltinType",
-// CHECK-NEXT:              "type": {
-// CHECK-NEXT:               "qualType": "bool"
-// CHECK-NEXT:              }
+// CHECK-NEXT:            "valueCategory": "prvalue",
+// CHECK-NEXT:            "referencedDecl": {
+// CHECK-NEXT:             "id": "0x{{.*}}",
+// CHECK-NEXT:             "kind": "NonTypeTemplateParmDecl",
+// CHECK-NEXT:             "name": "_Val",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:              "qualType": "bool"
 // CHECK-NEXT:             }
-// CHECK-NEXT:            ]
-// CHECK-NEXT:           },
-// CHECK-NEXT:           {
-// CHECK-NEXT:            "kind": "TemplateArgument",
-// CHECK-NEXT:            "isExpr": true,
-// CHECK-NEXT:            "inner": [
-// CHECK-NEXT:             {
-// CHECK-NEXT:              "id": "0x{{.*}}",
-// CHECK-NEXT:              "kind": "DeclRefExpr",
-// CHECK-NEXT:              "range": {
-// CHECK-NEXT:               "begin": {
-// CHECK-NEXT:                "offset": 554,
-// CHECK-NEXT:                "col": 47,
-// CHECK-NEXT:                "tokLen": 4
-// CHECK-NEXT:               },
-// CHECK-NEXT:               "end": {
-// CHECK-NEXT:                "offset": 554,
-// CHECK-NEXT:                "col": 47,
-// CHECK-NEXT:                "tokLen": 4
-// CHECK-NEXT:               }
-// CHECK-NEXT:              },
-// CHECK-NEXT:              "type": {
-// CHECK-NEXT:               "qualType": "bool"
-// CHECK-NEXT:              },
-// CHECK-NEXT:              "valueCategory": "prvalue",
-// CHECK-NEXT:              "referencedDecl": {
-// CHECK-NEXT:               "id": "0x{{.*}}",
-// CHECK-NEXT:               "kind": "NonTypeTemplateParmDecl",
-// CHECK-NEXT:               "name": "_Val",
-// CHECK-NEXT:               "type": {
-// CHECK-NEXT:                "qualType": "bool"
-// CHECK-NEXT:               }
-// CHECK-NEXT:              }
-// CHECK-NEXT:             }
-// CHECK-NEXT:            ]
+// CHECK-NEXT:            }
 // CHECK-NEXT:           }
 // CHECK-NEXT:          ]
 // CHECK-NEXT:         }

@@ -187,8 +187,8 @@ namespace TestPartialSpecNTTP {
   template <class U1, bool U2, bool U3>
   struct Template2<Template1<U1, U2>, U3> {};
 // DUMP:      ClassTemplatePartialSpecializationDecl {{.+}} struct Template2
-// DUMP:      |-TemplateArgument type 'Template1<type-parameter-0-0, value-parameter-0-1>'
-// DUMP-NEXT: | `-TemplateSpecializationType {{.+}} 'Template1<type-parameter-0-0, value-parameter-0-1>' dependent
+// DUMP:      |-TemplateArgument type 'TestPartialSpecNTTP::Template1<type-parameter-0-0, value-parameter-0-1>'
+// DUMP-NEXT: | `-TemplateSpecializationType {{.+}} 'TestPartialSpecNTTP::Template1<type-parameter-0-0, value-parameter-0-1>' dependent
 // DUMP-NEXT: |   |-name: 'TestPartialSpecNTTP::Template1'
 // DUMP-NEXT: |   | `-ClassTemplateDecl {{.+}} Template1
 // DUMP-NEXT: |   |-TemplateArgument type 'type-parameter-0-0'
@@ -205,8 +205,8 @@ namespace TestPartialSpecNTTP {
   template <typename U1, bool U3, bool U2>
   struct Template2<Template1<U1, U2>, U3> {};
 // DUMP:      ClassTemplatePartialSpecializationDecl {{.+}} struct Template2 definition explicit_specialization
-// DUMP:      |-TemplateArgument type 'Template1<type-parameter-0-0, value-parameter-0-2>'
-// DUMP-NEXT: | `-TemplateSpecializationType {{.+}} 'Template1<type-parameter-0-0, value-parameter-0-2>' dependent
+// DUMP:      |-TemplateArgument type 'TestPartialSpecNTTP::Template1<type-parameter-0-0, value-parameter-0-2>'
+// DUMP-NEXT: | `-TemplateSpecializationType {{.+}} 'TestPartialSpecNTTP::Template1<type-parameter-0-0, value-parameter-0-2>' dependent
 // DUMP-NEXT: |   |-name: 'TestPartialSpecNTTP::Template1'
 // DUMP-NEXT: |   | `-ClassTemplateDecl {{.+}} Template1
 // DUMP-NEXT: |   |-TemplateArgument type 'type-parameter-0-0'
@@ -6986,7 +6986,7 @@ namespace TestPartialSpecNTTP {
 // JSON-NEXT:      "tokLen": 9
 // JSON-NEXT:     },
 // JSON-NEXT:     "end": {
-// JSON-NEXT:      "offset": 9253,
+// JSON-NEXT:      "offset": 9337,
 // JSON-NEXT:      "line": 222,
 // JSON-NEXT:      "col": 1,
 // JSON-NEXT:      "tokLen": 1
@@ -7428,14 +7428,14 @@ namespace TestPartialSpecNTTP {
 // JSON-NEXT:       {
 // JSON-NEXT:        "kind": "TemplateArgument",
 // JSON-NEXT:        "type": {
-// JSON-NEXT:         "qualType": "Template1<type-parameter-0-0, value-parameter-0-1>"
+// JSON-NEXT:         "qualType": "TestPartialSpecNTTP::Template1<type-parameter-0-0, value-parameter-0-1>"
 // JSON-NEXT:        },
 // JSON-NEXT:        "inner": [
 // JSON-NEXT:         {
 // JSON-NEXT:          "id": "0x{{.*}}",
 // JSON-NEXT:          "kind": "TemplateSpecializationType",
 // JSON-NEXT:          "type": {
-// JSON-NEXT:           "qualType": "Template1<type-parameter-0-0, value-parameter-0-1>"
+// JSON-NEXT:           "qualType": "TestPartialSpecNTTP::Template1<type-parameter-0-0, value-parameter-0-1>"
 // JSON-NEXT:          },
 // JSON-NEXT:          "isDependent": true,
 // JSON-NEXT:          "isInstantiationDependent": true,
@@ -7653,20 +7653,20 @@ namespace TestPartialSpecNTTP {
 // JSON-NEXT:      "id": "0x{{.*}}",
 // JSON-NEXT:      "kind": "ClassTemplatePartialSpecializationDecl",
 // JSON-NEXT:      "loc": {
-// JSON-NEXT:       "offset": 7994,
+// JSON-NEXT:       "offset": 8036,
 // JSON-NEXT:       "line": 206,
 // JSON-NEXT:       "col": 10,
 // JSON-NEXT:       "tokLen": 9
 // JSON-NEXT:      },
 // JSON-NEXT:      "range": {
 // JSON-NEXT:       "begin": {
-// JSON-NEXT:        "offset": 7944,
+// JSON-NEXT:        "offset": 7986,
 // JSON-NEXT:        "line": 205,
 // JSON-NEXT:        "col": 3,
 // JSON-NEXT:        "tokLen": 8
 // JSON-NEXT:       },
 // JSON-NEXT:       "end": {
-// JSON-NEXT:        "offset": 8028,
+// JSON-NEXT:        "offset": 8070,
 // JSON-NEXT:        "line": 206,
 // JSON-NEXT:        "col": 44,
 // JSON-NEXT:        "tokLen": 1
@@ -7729,14 +7729,14 @@ namespace TestPartialSpecNTTP {
 // JSON-NEXT:       {
 // JSON-NEXT:        "kind": "TemplateArgument",
 // JSON-NEXT:        "type": {
-// JSON-NEXT:         "qualType": "Template1<type-parameter-0-0, value-parameter-0-2>"
+// JSON-NEXT:         "qualType": "TestPartialSpecNTTP::Template1<type-parameter-0-0, value-parameter-0-2>"
 // JSON-NEXT:        },
 // JSON-NEXT:        "inner": [
 // JSON-NEXT:         {
 // JSON-NEXT:          "id": "0x{{.*}}",
 // JSON-NEXT:          "kind": "TemplateSpecializationType",
 // JSON-NEXT:          "type": {
-// JSON-NEXT:           "qualType": "Template1<type-parameter-0-0, value-parameter-0-2>"
+// JSON-NEXT:           "qualType": "TestPartialSpecNTTP::Template1<type-parameter-0-0, value-parameter-0-2>"
 // JSON-NEXT:          },
 // JSON-NEXT:          "isDependent": true,
 // JSON-NEXT:          "isInstantiationDependent": true,
@@ -7774,12 +7774,12 @@ namespace TestPartialSpecNTTP {
 // JSON-NEXT:              "kind": "DeclRefExpr",
 // JSON-NEXT:              "range": {
 // JSON-NEXT:               "begin": {
-// JSON-NEXT:                "offset": 8018,
+// JSON-NEXT:                "offset": 8060,
 // JSON-NEXT:                "col": 34,
 // JSON-NEXT:                "tokLen": 2
 // JSON-NEXT:               },
 // JSON-NEXT:               "end": {
-// JSON-NEXT:                "offset": 8018,
+// JSON-NEXT:                "offset": 8060,
 // JSON-NEXT:                "col": 34,
 // JSON-NEXT:                "tokLen": 2
 // JSON-NEXT:               }
@@ -7813,12 +7813,12 @@ namespace TestPartialSpecNTTP {
 // JSON-NEXT:          "kind": "DeclRefExpr",
 // JSON-NEXT:          "range": {
 // JSON-NEXT:           "begin": {
-// JSON-NEXT:            "offset": 8023,
+// JSON-NEXT:            "offset": 8065,
 // JSON-NEXT:            "col": 39,
 // JSON-NEXT:            "tokLen": 2
 // JSON-NEXT:           },
 // JSON-NEXT:           "end": {
-// JSON-NEXT:            "offset": 8023,
+// JSON-NEXT:            "offset": 8065,
 // JSON-NEXT:            "col": 39,
 // JSON-NEXT:            "tokLen": 2
 // JSON-NEXT:           }
@@ -7842,19 +7842,19 @@ namespace TestPartialSpecNTTP {
 // JSON-NEXT:        "id": "0x{{.*}}",
 // JSON-NEXT:        "kind": "TemplateTypeParmDecl",
 // JSON-NEXT:        "loc": {
-// JSON-NEXT:         "offset": 7963,
+// JSON-NEXT:         "offset": 8005,
 // JSON-NEXT:         "line": 205,
 // JSON-NEXT:         "col": 22,
 // JSON-NEXT:         "tokLen": 2
 // JSON-NEXT:        },
 // JSON-NEXT:        "range": {
 // JSON-NEXT:         "begin": {
-// JSON-NEXT:          "offset": 7954,
+// JSON-NEXT:          "offset": 7996,
 // JSON-NEXT:          "col": 13,
 // JSON-NEXT:          "tokLen": 8
 // JSON-NEXT:         },
 // JSON-NEXT:         "end": {
-// JSON-NEXT:          "offset": 7963,
+// JSON-NEXT:          "offset": 8005,
 // JSON-NEXT:          "col": 22,
 // JSON-NEXT:          "tokLen": 2
 // JSON-NEXT:         }
@@ -7869,18 +7869,18 @@ namespace TestPartialSpecNTTP {
 // JSON-NEXT:        "id": "0x{{.*}}",
 // JSON-NEXT:        "kind": "NonTypeTemplateParmDecl",
 // JSON-NEXT:        "loc": {
-// JSON-NEXT:         "offset": 7972,
+// JSON-NEXT:         "offset": 8014,
 // JSON-NEXT:         "col": 31,
 // JSON-NEXT:         "tokLen": 2
 // JSON-NEXT:        },
 // JSON-NEXT:        "range": {
 // JSON-NEXT:         "begin": {
-// JSON-NEXT:          "offset": 7967,
+// JSON-NEXT:          "offset": 8009,
 // JSON-NEXT:          "col": 26,
 // JSON-NEXT:          "tokLen": 4
 // JSON-NEXT:         },
 // JSON-NEXT:         "end": {
-// JSON-NEXT:          "offset": 7972,
+// JSON-NEXT:          "offset": 8014,
 // JSON-NEXT:          "col": 31,
 // JSON-NEXT:          "tokLen": 2
 // JSON-NEXT:         }
@@ -7897,18 +7897,18 @@ namespace TestPartialSpecNTTP {
 // JSON-NEXT:        "id": "0x{{.*}}",
 // JSON-NEXT:        "kind": "NonTypeTemplateParmDecl",
 // JSON-NEXT:        "loc": {
-// JSON-NEXT:         "offset": 7981,
+// JSON-NEXT:         "offset": 8023,
 // JSON-NEXT:         "col": 40,
 // JSON-NEXT:         "tokLen": 2
 // JSON-NEXT:        },
 // JSON-NEXT:        "range": {
 // JSON-NEXT:         "begin": {
-// JSON-NEXT:          "offset": 7976,
+// JSON-NEXT:          "offset": 8018,
 // JSON-NEXT:          "col": 35,
 // JSON-NEXT:          "tokLen": 4
 // JSON-NEXT:         },
 // JSON-NEXT:         "end": {
-// JSON-NEXT:          "offset": 7981,
+// JSON-NEXT:          "offset": 8023,
 // JSON-NEXT:          "col": 40,
 // JSON-NEXT:          "tokLen": 2
 // JSON-NEXT:         }
@@ -7925,19 +7925,19 @@ namespace TestPartialSpecNTTP {
 // JSON-NEXT:        "id": "0x{{.*}}",
 // JSON-NEXT:        "kind": "CXXRecordDecl",
 // JSON-NEXT:        "loc": {
-// JSON-NEXT:         "offset": 7994,
+// JSON-NEXT:         "offset": 8036,
 // JSON-NEXT:         "line": 206,
 // JSON-NEXT:         "col": 10,
 // JSON-NEXT:         "tokLen": 9
 // JSON-NEXT:        },
 // JSON-NEXT:        "range": {
 // JSON-NEXT:         "begin": {
-// JSON-NEXT:          "offset": 7987,
+// JSON-NEXT:          "offset": 8029,
 // JSON-NEXT:          "col": 3,
 // JSON-NEXT:          "tokLen": 6
 // JSON-NEXT:         },
 // JSON-NEXT:         "end": {
-// JSON-NEXT:          "offset": 7994,
+// JSON-NEXT:          "offset": 8036,
 // JSON-NEXT:          "col": 10,
 // JSON-NEXT:          "tokLen": 9
 // JSON-NEXT:         }

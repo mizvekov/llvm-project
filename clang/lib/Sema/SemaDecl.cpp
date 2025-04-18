@@ -6262,17 +6262,12 @@ bool Sema::diagnoseQualifiedDeclaration(CXXScopeSpec &SS, DeclContext *DC,
        TL = std::exchange(NextTL, TypeLoc())) {
     SourceLocation TemplateKeywordLoc;
     switch (TL.getTypeLocClass()) {
-    case TypeLoc::Elaborated: {
-      auto ET = TL.castAs<ElaboratedTypeLoc>();
-      NextTL = ET.getNextTypeLoc();
-      if (auto TST =
-              ET.getNamedTypeLoc().getAs<TemplateSpecializationTypeLoc>()) {
-        TemplateKeywordLoc = TST.getTemplateKeywordLoc();
-        auto *T = TST.getTypePtr();
-        if (T->isDependentType() && T->isTypeAlias())
-          Diag(Loc, diag::ext_alias_template_in_declarative_nns)
-              << TST.getLocalSourceRange();
-      }
+    case TypeLoc::TemplateSpecialization: {
+      auto TST = TL.castAs<TemplateSpecializationTypeLoc>();
+      TemplateKeywordLoc = TST.getTemplateKeywordLoc();
+      if (auto *T = TST.getTypePtr(); T->isDependentType() && T->isTypeAlias())
+        Diag(Loc, diag::ext_alias_template_in_declarative_nns)
+            << TST.getLocalSourceRange();
       break;
     }
     case TypeLoc::Decltype:

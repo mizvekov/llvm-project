@@ -953,7 +953,8 @@ bool Sema::ActOnCXXNestedNameSpecifier(Scope *S,
 
   // We were able to resolve the template name to an actual template.
   // Build an appropriate nested-name-specifier.
-  QualType T = CheckTemplateIdType(Template, TemplateNameLoc, TemplateArgs);
+  QualType T = CheckTemplateIdType(ElaboratedTypeKeyword::None, Template,
+                                   TemplateNameLoc, TemplateArgs);
   if (T.isNull())
     return true;
 
@@ -968,6 +969,8 @@ bool Sema::ActOnCXXNestedNameSpecifier(Scope *S,
   // Provide source-location information for the template specialization type.
   TypeLocBuilder TLB;
   auto SpecTL = TLB.push<TemplateSpecializationTypeLoc>(T);
+  SpecTL.setElaboratedKeywordLoc(SourceLocation());
+  SpecTL.setQualifierLoc(SS.getWithLocInContext(Context));
   SpecTL.setTemplateKeywordLoc(TemplateKWLoc);
   SpecTL.setTemplateNameLoc(TemplateNameLoc);
   SpecTL.setLAngleLoc(LAngleLoc);
@@ -975,14 +978,8 @@ bool Sema::ActOnCXXNestedNameSpecifier(Scope *S,
   for (unsigned I = 0, N = TemplateArgs.size(); I != N; ++I)
     SpecTL.setArgLocInfo(I, TemplateArgs[I].getLocInfo());
 
-  QualType ET = Context.getElaboratedType(ElaboratedTypeKeyword::None,
-                                          SS.getScopeRep(), T);
-  auto ETL = TLB.push<ElaboratedTypeLoc>(ET);
-  ETL.setElaboratedKeywordLoc(SourceLocation());
-  ETL.setQualifierLoc(SS.getWithLocInContext(Context));
-
   SS.clear();
-  SS.Make(Context, TLB.getTypeLocInContext(Context, ET), CCLoc);
+  SS.Make(Context, TLB.getTypeLocInContext(Context, T), CCLoc);
   return false;
 }
 
