@@ -635,12 +635,12 @@ std::optional<APValue> Pointer::toRValue(const Context &Ctx,
       return true;
     }
 
-    if (const auto *RT = Ty->getAs<RecordType>()) {
+    if (const auto *RD = Ty->getAsRecordDecl()) {
       const auto *Record = Ptr.getRecord();
       assert(Record && "Missing record descriptor");
 
       bool Ok = true;
-      if (RT->getDecl()->isUnion()) {
+      if (RD->isUnion()) {
         const FieldDecl *ActiveField = nullptr;
         APValue Value;
         for (const auto &F : Record->fields()) {

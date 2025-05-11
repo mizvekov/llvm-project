@@ -313,6 +313,7 @@ public:
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isUnsignedIntegerOrEnumerationType)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isConstantSizeType)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isSpecifierType)
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(RecordDecl *, getAsRecordDecl)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(CXXRecordDecl*, getAsCXXRecordDecl)
 
   /// Retrieve the proxy-adaptor type.
@@ -559,7 +560,6 @@ template<>
 struct CanProxyAdaptor<RecordType> : public CanProxyBase<RecordType> {
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(RecordDecl *, getDecl)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
-  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, hasConstFields)
 };
 
 template<>

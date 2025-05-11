@@ -325,8 +325,8 @@ extern "C" void REPL_EXTERNAL_VISIBILITY __clang_Interpreter_SetValueNoAlloc(
   if (VRef.getKind() == Value::K_PtrOrObj) {
     VRef.setPtr(va_arg(args, void *));
   } else {
-    if (const auto *ET = QT->getAs<EnumType>())
-      QT = ET->getDecl()->getIntegerType();
+    if (const auto *ED = QT->getAsEnumDecl())
+      QT = ED->getIntegerType();
     switch (QT->castAs<BuiltinType>()->getKind()) {
     default:
       llvm_unreachable("unknown type kind!");

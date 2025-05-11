@@ -1385,12 +1385,12 @@ SemaObjC::ObjCSubscriptKind SemaObjC::CheckSubscriptingKind(Expr *FromE) {
 
   // If we don't have a class type in C++, there's no way we can get an
   // expression of integral or enumeration type.
-  const RecordType *RecordTy = T->getAs<RecordType>();
-  if (!RecordTy && (T->isObjCObjectPointerType() || T->isVoidPointerType()))
+  const RecordDecl *RD = T->getAsRecordDecl();
+  if (!RD && (T->isObjCObjectPointerType() || T->isVoidPointerType()))
     // All other scalar cases are assumed to be dictionary indexing which
     // caller handles, with diagnostics if needed.
     return SemaObjC::OS_Dictionary;
-  if (!getLangOpts().CPlusPlus || !RecordTy || RecordTy->isIncompleteType()) {
+  if (!getLangOpts().CPlusPlus || !RD || !RD->isCompleteDefinition()) {
     // No indexing can be done. Issue diagnostics and quit.
     const Expr *IndexExpr = FromE->IgnoreParenImpCasts();
     if (isa<StringLiteral>(IndexExpr))
@@ -1412,8 +1412,8 @@ SemaObjC::ObjCSubscriptKind SemaObjC::CheckSubscriptingKind(Expr *FromE) {
   int NoIntegrals = 0, NoObjCIdPointers = 0;
   SmallVector<CXXConversionDecl *, 4> ConversionDecls;
 
-  for (NamedDecl *D : cast<CXXRecordDecl>(RecordTy->getDecl())
-                          ->getVisibleConversionFunctions()) {
+  for (NamedDecl *D :
+       cast<CXXRecordDecl>(RD)->getVisibleConversionFunctions()) {
     if (CXXConversionDecl *Conversion =
             dyn_cast<CXXConversionDecl>(D->getUnderlyingDecl())) {
       QualType CT = Conversion->getConversionType().getNonReferenceType();
@@ -1511,11 +1511,10 @@ bool SemaObjC::isCFStringType(QualType T) {
   if (!PT)
     return false;
 
-  const auto *RT = PT->getPointeeType()->getAs<RecordType>();
-  if (!RT)
+  const auto *RD = PT->getPointeeType()->getAsRecordDecl();
+  if (!RD)
     return false;
 
-  const RecordDecl *RD = RT->getDecl();
   if (RD->getTagKind() != TagTypeKind::Struct)
     return false;
 

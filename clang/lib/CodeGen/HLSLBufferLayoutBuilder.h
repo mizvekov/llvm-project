@@ -10,7 +10,7 @@
 #include "llvm/IR/DerivedTypes.h"
 
 namespace clang {
-class RecordType;
+class CXXRecordDecl;
 class FieldDecl;
 
 namespace CodeGen {
@@ -34,7 +34,7 @@ public:
   // for given structure type and layout data. The first number in
   // the Layout is the size followed by offsets for each struct element.
   llvm::TargetExtType *
-  createLayoutType(const RecordType *StructType,
+  createLayoutType(const CXXRecordDecl *StructDecl,
                    const llvm::SmallVector<int32_t> *Packoffsets = nullptr);
 
 private:

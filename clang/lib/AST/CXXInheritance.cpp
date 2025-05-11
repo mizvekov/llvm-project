@@ -129,12 +129,11 @@ bool CXXRecordDecl::forallBases(ForallBasesCallback BaseMatches) const {
   const CXXRecordDecl *Record = this;
   while (true) {
     for (const auto &I : Record->bases()) {
-      const RecordType *Ty = I.getType()->getAs<RecordType>();
-      if (!Ty)
+      const RecordDecl *RD = I.getType()->getAsRecordDecl();
+      if (!RD)
         return false;
 
-      CXXRecordDecl *Base =
-          cast_if_present<CXXRecordDecl>(Ty->getDecl()->getDefinition());
+      CXXRecordDecl *Base = cast_if_present<CXXRecordDecl>(RD->getDefinition());
       if (!Base ||
           (Base->isDependentContext() &&
            !Base->isCurrentInstantiation(Record))) {
@@ -197,7 +196,7 @@ bool CXXBasePaths::lookupInBases(ASTContext &Context,
       if (isDetectingVirtual() && DetectedVirtual == nullptr) {
         // If this is the first virtual we find, remember it. If it turns out
         // there is no base path here, we'll reset it later.
-        DetectedVirtual = BaseType->getAs<RecordType>();
+        DetectedVirtual = BaseType->getAsRecordDecl();
         SetVirtual = true;
       }
     } else {
@@ -256,8 +255,8 @@ bool CXXBasePaths::lookupInBases(ASTContext &Context,
         const TemplateSpecializationType *TST =
             BaseSpec.getType()->getAs<TemplateSpecializationType>();
         if (!TST) {
-          if (auto *RT = BaseSpec.getType()->getAs<RecordType>())
-            BaseRecord = cast<CXXRecordDecl>(RT->getDecl());
+          if (auto *RD = BaseSpec.getType()->getAsCXXRecordDecl())
+            BaseRecord = RD;
         } else {
           TemplateName TN = TST->getTemplateName();
           if (auto *TD =
@@ -336,8 +335,8 @@ bool CXXRecordDecl::lookupInBases(BaseMatchesCallback BaseMatches,
         continue;
 
       CXXRecordDecl *VBase = nullptr;
-      if (const RecordType *Record = PE.Base->getType()->getAs<RecordType>())
-        VBase = cast<CXXRecordDecl>(Record->getDecl());
+      if (CXXRecordDecl *Record = PE.Base->getType()->getAsCXXRecordDecl())
+        VBase = Record;
       if (!VBase)
         break;
 
@@ -347,9 +346,9 @@ bool CXXRecordDecl::lookupInBases(BaseMatchesCallback BaseMatches,
       // declaration in this path are hidden by that patch.
       for (const CXXBasePath &HidingP : Paths) {
         CXXRecordDecl *HidingClass = nullptr;
-        if (const RecordType *Record =
-                HidingP.back().Base->getType()->getAs<RecordType>())
-          HidingClass = cast<CXXRecordDecl>(Record->getDecl());
+        if (RecordDecl *Record =
+                HidingP.back().Base->getType()->getAsRecordDecl())
+          HidingClass = cast<CXXRecordDecl>(Record);
         if (!HidingClass)
           break;
 
@@ -468,8 +467,7 @@ void FinalOverriderCollector::Collect(const CXXRecordDecl *RD,
       = ++SubobjectCount[cast<CXXRecordDecl>(RD->getCanonicalDecl())];
 
   for (const auto &Base : RD->bases()) {
-    if (const RecordType *RT = Base.getType()->getAs<RecordType>()) {
-      const CXXRecordDecl *BaseDecl = cast<CXXRecordDecl>(RT->getDecl());
+    if (const CXXRecordDecl *BaseDecl = Base.getType()->getAsCXXRecordDecl()) {
       if (!BaseDecl->isPolymorphic())
         continue;
 

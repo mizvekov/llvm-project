@@ -14279,8 +14279,8 @@ TreeTransform<Derived>::TransformCXXTypeidExpr(CXXTypeidExpr *E) {
   Expr *Op = E->getExprOperand();
   auto EvalCtx = Sema::ExpressionEvaluationContext::Unevaluated;
   if (E->isGLValue())
-    if (auto *RecordT = Op->getType()->getAs<RecordType>())
-      if (cast<CXXRecordDecl>(RecordT->getDecl())->isPolymorphic())
+    if (auto *Record = Op->getType()->getAsCXXRecordDecl())
+      if (Record->isPolymorphic())
         EvalCtx = SemaRef.ExprEvalContexts.back().Context;
 
   EnterExpressionEvaluationContext Unevaluated(SemaRef, EvalCtx,
@@ -14517,12 +14517,9 @@ TreeTransform<Derived>::TransformCXXNewExpr(CXXNewExpr *E) {
     if (E->isArray() && !E->getAllocatedType()->isDependentType()) {
       QualType ElementType
         = SemaRef.Context.getBaseElementType(E->getAllocatedType());
-      if (const RecordType *RecordT = ElementType->getAs<RecordType>()) {
-        CXXRecordDecl *Record = cast<CXXRecordDecl>(RecordT->getDecl());
-        if (CXXDestructorDecl *Destructor = SemaRef.LookupDestructor(Record)) {
+      if (CXXRecordDecl *Record = ElementType->getAsCXXRecordDecl())
+        if (CXXDestructorDecl *Destructor = SemaRef.LookupDestructor(Record))
           SemaRef.MarkFunctionReferenced(E->getBeginLoc(), Destructor);
-        }
-      }
     }
 
     return E;
@@ -14587,11 +14584,9 @@ TreeTransform<Derived>::TransformCXXDeleteExpr(CXXDeleteExpr *E) {
     if (!E->getArgument()->isTypeDependent()) {
       QualType Destroyed = SemaRef.Context.getBaseElementType(
                                                          E->getDestroyedType());
-      if (const RecordType *DestroyedRec = Destroyed->getAs<RecordType>()) {
-        CXXRecordDecl *Record = cast<CXXRecordDecl>(DestroyedRec->getDecl());
+      if (auto *Record = Destroyed->getAsCXXRecordDecl())
         SemaRef.MarkFunctionReferenced(E->getBeginLoc(),
                                        SemaRef.LookupDestructor(Record));
-      }
     }
 
     return E;
@@ -17561,10 +17556,9 @@ TreeTransform<Derived>::RebuildCXXPseudoDestructorExpr(Expr *Base,
                                         PseudoDestructorTypeStorage Destroyed) {
   QualType BaseType = Base->getType();
   if (Base->isTypeDependent() || Destroyed.getIdentifier() ||
-      (!isArrow && !BaseType->getAs<RecordType>()) ||
+      (!isArrow && !BaseType->getAsRecordDecl()) ||
       (isArrow && BaseType->getAs<PointerType>() &&
-       !BaseType->castAs<PointerType>()->getPointeeType()
-                                              ->template getAs<RecordType>())){
+       !BaseType->castAs<PointerType>()->getPointeeType()->getAsRecordDecl())) {
     // This pseudo-destructor expression is still a pseudo-destructor.
     return SemaRef.BuildPseudoDestructorExpr(
         Base, OperatorLoc, isArrow ? tok::arrow : tok::period, SS, ScopeType,

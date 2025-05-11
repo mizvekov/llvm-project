@@ -1506,8 +1506,8 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   // types
   if (Field1->isAnonymousStructOrUnion() &&
       Field2->isAnonymousStructOrUnion()) {
-    RecordDecl *D1 = Field1->getType()->castAs<RecordType>()->getDecl();
-    RecordDecl *D2 = Field2->getType()->castAs<RecordType>()->getDecl();
+    RecordDecl *D1 = Field1->getType()->getAsRecordDecl();
+    RecordDecl *D2 = Field2->getType()->getAsRecordDecl();
     return IsStructurallyEquivalent(Context, D1, D2);
   }
 
@@ -2519,8 +2519,7 @@ StructuralEquivalenceContext::findUntaggedStructOrUnionIndex(RecordDecl *Anon) {
     while (const auto *ElabType = dyn_cast<ElaboratedType>(FieldType))
       FieldType = ElabType->getNamedType();
 
-    if (const auto *RecType = dyn_cast<RecordType>(FieldType)) {
-      const RecordDecl *RecDecl = RecType->getDecl();
+    if (const auto *RecDecl = FieldType->getAsRecordDecl()) {
       if (RecDecl->getDeclContext() == Owner && !RecDecl->getIdentifier()) {
         if (Context.hasSameType(FieldType, AnonTy))
           break;

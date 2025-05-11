@@ -2844,8 +2844,8 @@ VarDecl::needsDestruction(const ASTContext &Ctx) const {
 
 bool VarDecl::hasFlexibleArrayInit(const ASTContext &Ctx) const {
   assert(hasInit() && "Expect initializer to check for flexible array init");
-  auto *Ty = getType()->getAs<RecordType>();
-  if (!Ty || !Ty->getDecl()->hasFlexibleArrayMember())
+  auto *RD = getType()->getAsRecordDecl();
+  if (!RD || !RD->hasFlexibleArrayMember())
     return false;
   auto *List = dyn_cast<InitListExpr>(getInit()->IgnoreParens());
   if (!List)
@@ -2859,8 +2859,8 @@ bool VarDecl::hasFlexibleArrayInit(const ASTContext &Ctx) const {
 
 CharUnits VarDecl::getFlexibleArrayInitChars(const ASTContext &Ctx) const {
   assert(hasInit() && "Expect initializer to check for flexible array init");
-  auto *Ty = getType()->getAs<RecordType>();
-  if (!Ty || !Ty->getDecl()->hasFlexibleArrayMember())
+  auto *RD = getType()->getAsRecordDecl();
+  if (!RD || !RD->hasFlexibleArrayMember())
     return CharUnits::Zero();
   auto *List = dyn_cast<InitListExpr>(getInit()->IgnoreParens());
   if (!List || List->getNumInits() == 0)
@@ -2870,7 +2870,7 @@ CharUnits VarDecl::getFlexibleArrayInitChars(const ASTContext &Ctx) const {
   if (!InitTy)
     return CharUnits::Zero();
   CharUnits FlexibleArraySize = Ctx.getTypeSizeInChars(InitTy);
-  const ASTRecordLayout &RL = Ctx.getASTRecordLayout(Ty->getDecl());
+  const ASTRecordLayout &RL = Ctx.getASTRecordLayout(RD);
   CharUnits FlexibleArrayOffset =
       Ctx.toCharUnitsFromBits(RL.getFieldOffset(RL.getFieldCount() - 1));
   if (FlexibleArrayOffset + FlexibleArraySize < RL.getSize())
@@ -2971,9 +2971,8 @@ bool ParmVarDecl::isDestroyedInCallee() const {
 
   // FIXME: isParamDestroyedInCallee() should probably imply
   // isDestructedType()
-  const auto *RT = getType()->getAs<RecordType>();
-  if (RT && RT->getDecl()->isParamDestroyedInCallee() &&
-      getType().isDestructedType())
+  const auto *RD = getType()->getAsRecordDecl();
+  if (RD && RD->isParamDestroyedInCallee() && getType().isDestructedType())
     return true;
 
   return false;
@@ -3482,8 +3481,7 @@ bool FunctionDecl::isUsableAsGlobalAllocationFunctionInConstantEvaluation(
     QualType T = Ty;
     while (const auto *TD = T->getAs<TypedefType>())
       T = TD->getDecl()->getUnderlyingType();
-    const IdentifierInfo *II =
-        T->castAs<EnumType>()->getDecl()->getIdentifier();
+    const IdentifierInfo *II = T->getAsEnumDecl()->getIdentifier();
     if (II && II->isStr("__hot_cold_t"))
       Consume();
   }
@@ -4634,8 +4632,8 @@ bool FieldDecl::isAnonymousStructOrUnion() const {
   if (!isImplicit() || getDeclName())
     return false;
 
-  if (const auto *Record = getType()->getAs<RecordType>())
-    return Record->getDecl()->isAnonymousStructOrUnion();
+  if (const auto *Record = getType()->getAsRecordDecl())
+    return Record->isAnonymousStructOrUnion();
 
   return false;
 }
@@ -4689,10 +4687,10 @@ bool FieldDecl::isZeroSize(const ASTContext &Ctx) const {
     return false;
 
   //     -- is not of class type, or
-  const auto *RT = getType()->getAs<RecordType>();
-  if (!RT)
+  const auto *RD = getType()->getAsRecordDecl();
+  if (!RD)
     return false;
-  const RecordDecl *RD = RT->getDecl()->getDefinition();
+  RD = RD->getDefinition();
   if (!RD) {
     assert(isInvalidDecl() && "valid field has incomplete type");
     return false;
@@ -4712,7 +4710,7 @@ bool FieldDecl::isZeroSize(const ASTContext &Ctx) const {
   // MS ABI: has nonzero size if it is a class type with class type fields,
   // whether or not they have nonzero size
   return !llvm::any_of(CXXRD->fields(), [](const FieldDecl *Field) {
-    return Field->getType()->getAs<RecordType>();
+    return Field->getType()->getAsRecordDecl();
   });
 }
 
@@ -5146,8 +5144,8 @@ bool RecordDecl::isOrContainsUnion() const {
 
   if (const RecordDecl *Def = getDefinition()) {
     for (const FieldDecl *FD : Def->fields()) {
-      const RecordType *RT = FD->getType()->getAs<RecordType>();
-      if (RT && RT->getDecl()->isOrContainsUnion())
+      const RecordDecl *RD = FD->getType()->getAsRecordDecl();
+      if (RD && RD->isOrContainsUnion())
         return true;
     }
   }
@@ -5190,6 +5188,27 @@ void RecordDecl::completeDefinition() {
 /// -mms-bitfields command-line option.
 bool RecordDecl::isMsStruct(const ASTContext &C) const {
   return hasAttr<MSStructAttr>() || C.getLangOpts().MSBitfields == 1;
+}
+
+bool RecordDecl::hasConstFields() const {
+  std::vector<const RecordDecl *> RecordList;
+  RecordList.push_back(this);
+  unsigned NextToCheckIndex = 0;
+
+  while (RecordList.size() > NextToCheckIndex) {
+    for (FieldDecl *FD : RecordList[NextToCheckIndex]->fields()) {
+      QualType FieldTy = FD->getType();
+      if (FieldTy.isConstQualified())
+        return true;
+      FieldTy = FieldTy.getCanonicalType();
+      if (const auto *FieldRD = FieldTy->getAsRecordDecl()) {
+        if (!llvm::is_contained(RecordList, FieldRD))
+          RecordList.push_back(FieldRD);
+      }
+    }
+    ++NextToCheckIndex;
+  }
+  return false;
 }
 
 void RecordDecl::reorderDecls(const SmallVectorImpl<Decl *> &Decls) {
@@ -5278,9 +5297,8 @@ const FieldDecl *RecordDecl::findFirstNamedDataMember() const {
     if (I->getIdentifier())
       return I;
 
-    if (const auto *RT = I->getType()->getAs<RecordType>())
-      if (const FieldDecl *NamedDataMember =
-              RT->getDecl()->findFirstNamedDataMember())
+    if (const auto *RD = I->getType()->getAsRecordDecl())
+      if (const FieldDecl *NamedDataMember = RD->findFirstNamedDataMember())
         return NamedDataMember;
   }
 

@@ -514,9 +514,9 @@ bool Compiler<Emitter>::VisitCastExpr(const CastExpr *CE) {
     // Possibly diagnose casts to enum types if the target type does not
     // have a fixed size.
     if (Ctx.getLangOpts().CPlusPlus && CE->getType()->isEnumeralType()) {
-      if (const auto *ET = CE->getType().getCanonicalType()->castAs<EnumType>();
-          !ET->getDecl()->isFixed()) {
-        if (!this->emitCheckEnumValue(*FromT, ET->getDecl(), CE))
+      if (const auto *ED = CE->getType().getCanonicalType()->getAsEnumDecl();
+          !ED->isFixed()) {
+        if (!this->emitCheckEnumValue(*FromT, ED, CE))
           return false;
       }
     }
@@ -4433,15 +4433,15 @@ std::optional<unsigned> Compiler<Emitter>::allocateTemporary(const Expr *E) {
 }
 
 template <class Emitter>
-const RecordType *Compiler<Emitter>::getRecordTy(QualType Ty) {
+RecordDecl *Compiler<Emitter>::getRecordDecl(QualType Ty) {
   if (const PointerType *PT = dyn_cast<PointerType>(Ty))
-    return PT->getPointeeType()->getAs<RecordType>();
-  return Ty->getAs<RecordType>();
+    return PT->getPointeeType()->getAsRecordDecl();
+  return Ty->getAsRecordDecl();
 }
 
 template <class Emitter> Record *Compiler<Emitter>::getRecord(QualType Ty) {
-  if (const auto *RecordTy = getRecordTy(Ty))
-    return getRecord(RecordTy->getDecl());
+  if (auto *Record = getRecordDecl(Ty))
+    return getRecord(Record);
   return nullptr;
 }
 

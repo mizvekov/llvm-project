@@ -227,8 +227,8 @@ bool RISCVABIInfo::detectFPCCEligibleStructHelper(QualType Ty, CharUnits CurOff,
     QualType EltTy = ATy->getElementType();
     // Non-zero-length arrays of empty records make the struct ineligible for
     // the FP calling convention in C++.
-    if (const auto *RTy = EltTy->getAs<RecordType>()) {
-      if (ArraySize != 0 && isa<CXXRecordDecl>(RTy->getDecl()) &&
+    if (const auto *RD = EltTy->getAsRecordDecl()) {
+      if (ArraySize != 0 && isa<CXXRecordDecl>(RD) &&
           isEmptyRecord(getContext(), EltTy, true, true))
         return false;
     }
@@ -243,14 +243,13 @@ bool RISCVABIInfo::detectFPCCEligibleStructHelper(QualType Ty, CharUnits CurOff,
     return true;
   }
 
-  if (const auto *RTy = Ty->getAs<RecordType>()) {
+  if (const auto *RD = Ty->getAsRecordDecl()) {
     // Structures with either a non-trivial destructor or a non-trivial
     // copy constructor are not eligible for the FP calling convention.
     if (getRecordArgABI(Ty, CGT.getCXXABI()))
       return false;
     if (isEmptyRecord(getContext(), Ty, true, true))
       return true;
-    const RecordDecl *RD = RTy->getDecl();
     // Unions aren't eligible unless they're empty (which is caught above).
     if (RD->isUnion())
       return false;
@@ -258,8 +257,8 @@ bool RISCVABIInfo::detectFPCCEligibleStructHelper(QualType Ty, CharUnits CurOff,
     // If this is a C++ record, check the bases first.
     if (const CXXRecordDecl *CXXRD = dyn_cast<CXXRecordDecl>(RD)) {
       for (const CXXBaseSpecifier &B : CXXRD->bases()) {
-        const auto *BDecl =
-            cast<CXXRecordDecl>(B.getType()->castAs<RecordType>()->getDecl());
+        const auto *BDecl = B.getType()->getAsCXXRecordDecl();
+        assert(BDecl);
         CharUnits BaseOff = Layout.getBaseClassOffset(BDecl);
         bool Ret = detectFPCCEligibleStructHelper(B.getType(), CurOff + BaseOff,
                                                   Field1Ty, Field1Off, Field2Ty,
@@ -696,8 +695,8 @@ ABIArgInfo RISCVABIInfo::classifyArgumentType(QualType Ty, bool IsFixed,
 
   if (!isAggregateTypeForABI(Ty) && !Ty->isVectorType()) {
     // Treat an enum type as its underlying type.
-    if (const EnumType *EnumTy = Ty->getAs<EnumType>())
-      Ty = EnumTy->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = Ty->getAsEnumDecl())
+      Ty = Enum->getIntegerType();
 
     // All integral types are promoted to XLen width
     if (Size < XLen && Ty->isIntegralOrEnumerationType()) {

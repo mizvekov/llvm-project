@@ -150,8 +150,8 @@ bool LoongArchABIInfo::detectFARsEligibleStructHelper(
     QualType EltTy = ATy->getElementType();
     // Non-zero-length arrays of empty records make the struct ineligible to be
     // passed via FARs in C++.
-    if (const auto *RTy = EltTy->getAs<RecordType>()) {
-      if (ArraySize != 0 && isa<CXXRecordDecl>(RTy->getDecl()) &&
+    if (const auto *RD = EltTy->getAsRecordDecl()) {
+      if (ArraySize != 0 && isa<CXXRecordDecl>(RD) &&
           isEmptyRecord(getContext(), EltTy, true, true))
         return false;
     }
@@ -165,12 +165,11 @@ bool LoongArchABIInfo::detectFARsEligibleStructHelper(
     return true;
   }
 
-  if (const auto *RTy = Ty->getAs<RecordType>()) {
+  if (const auto *RD = Ty->getAsRecordDecl()) {
     // Structures with either a non-trivial destructor or a non-trivial
     // copy constructor are not eligible for the FP calling convention.
     if (getRecordArgABI(Ty, CGT.getCXXABI()))
       return false;
-    const RecordDecl *RD = RTy->getDecl();
     if (isEmptyRecord(getContext(), Ty, true, true) &&
         (!RD->isUnion() || !isa<CXXRecordDecl>(RD)))
       return true;
@@ -181,8 +180,8 @@ bool LoongArchABIInfo::detectFARsEligibleStructHelper(
     // If this is a C++ record, check the bases first.
     if (const CXXRecordDecl *CXXRD = dyn_cast<CXXRecordDecl>(RD)) {
       for (const CXXBaseSpecifier &B : CXXRD->bases()) {
-        const auto *BDecl =
-            cast<CXXRecordDecl>(B.getType()->castAs<RecordType>()->getDecl());
+        const auto *BDecl = B.getType()->getAsCXXRecordDecl();
+        assert(BDecl);
         if (!detectFARsEligibleStructHelper(
                 B.getType(), CurOff + Layout.getBaseClassOffset(BDecl),
                 Field1Ty, Field1Off, Field2Ty, Field2Off))
@@ -369,8 +368,8 @@ ABIArgInfo LoongArchABIInfo::classifyArgumentType(QualType Ty, bool IsFixed,
 
   if (!isAggregateTypeForABI(Ty) && !Ty->isVectorType()) {
     // Treat an enum type as its underlying type.
-    if (const EnumType *EnumTy = Ty->getAs<EnumType>())
-      Ty = EnumTy->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = Ty->getAsEnumDecl())
+      Ty = Enum->getIntegerType();
 
     // All integral types are promoted to GRLen width.
     if (Size < GRLen && Ty->isIntegralOrEnumerationType())

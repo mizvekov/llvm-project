@@ -426,7 +426,7 @@ public:
 
 template <typename T> RecordDecl *getRecordDecl(T *D) {
   auto *ET = cast<ElaboratedType>(D->getType().getTypePtr());
-  return cast<RecordType>(ET->getNamedType().getTypePtr())->getDecl();
+  return ET->getNamedType().getTypePtr()->getAsRecordDecl();
 }
 
 template <class T>

@@ -682,8 +682,8 @@ public:
     if (const auto *RD = dyn_cast<CXXRecordDecl>(Record)) {
       // Accept candidates that occur in any of the current class' base classes.
       for (const auto &BS : RD->bases()) {
-        if (const auto *BSTy = BS.getType()->getAs<RecordType>()) {
-          if (BSTy->getDecl()->containsDecl(ND))
+        if (const auto *RD = BS.getType()->getAsRecordDecl()) {
+          if (RD->containsDecl(ND))
             return true;
         }
       }

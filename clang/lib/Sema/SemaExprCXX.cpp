@@ -542,7 +542,7 @@ ExprResult Sema::BuildCXXTypeId(QualType TypeInfoType,
   QualType T
     = Context.getUnqualifiedArrayType(Operand->getType().getNonReferenceType(),
                                       Quals);
-  if (T->getAs<RecordType>() &&
+  if (T->getAsRecordDecl() &&
       RequireCompleteType(TypeidLoc, T, diag::err_incomplete_typeid))
     return ExprError();
 
@@ -569,8 +569,7 @@ ExprResult Sema::BuildCXXTypeId(QualType TypeInfoType,
     }
 
     QualType T = E->getType();
-    if (const RecordType *RecordT = T->getAs<RecordType>()) {
-      CXXRecordDecl *RecordD = cast<CXXRecordDecl>(RecordT->getDecl());
+    if (CXXRecordDecl *RecordD = T->getAsCXXRecordDecl()) {
       // C++ [expr.typeid]p3:
       //   [...] If the type of the expression is a class type, the class
       //   shall be completely-defined.
@@ -1984,16 +1983,16 @@ static UsualDeallocFnInfo resolveDeallocationOverload(
 static bool doesUsualArrayDeleteWantSize(Sema &S, SourceLocation loc,
                                          TypeAwareAllocationMode PassType,
                                          QualType allocType) {
-  const RecordType *record =
-    allocType->getBaseElementTypeUnsafe()->getAs<RecordType>();
-  if (!record) return false;
+  RecordDecl *record = allocType->getBaseElementTypeUnsafe()->getAsRecordDecl();
+  if (!record)
+    return false;
 
   // Try to find an operator delete[] in class scope.
 
   DeclarationName deleteName =
     S.Context.DeclarationNames.getCXXOperatorName(OO_Array_Delete);
   LookupResult ops(S, deleteName, loc, Sema::LookupOrdinaryName);
-  S.LookupQualifiedName(ops, record->getDecl());
+  S.LookupQualifiedName(ops, record);
 
   // We're just doing this for information.
   ops.suppressDiagnostics();
@@ -2303,7 +2302,7 @@ ExprResult Sema::BuildCXXNew(SourceRange Range, bool UseGlobal,
           *ArraySize, Context.getSizeType(), AssignmentAction::Converting);
 
       if (!ConvertedSize.isInvalid() &&
-          (*ArraySize)->getType()->getAs<RecordType>())
+          (*ArraySize)->getType()->getAsRecordDecl())
         // Diagnose the compatibility of this conversion.
         Diag(StartLoc, diag::warn_cxx98_compat_array_size_conversion)
           << (*ArraySize)->getType() << 0 << "'size_t'";
@@ -3050,8 +3049,8 @@ bool Sema::FindAllocationFunctions(
   LookupResult FoundDelete(*this, DeleteName, StartLoc, LookupOrdinaryName);
   if (AllocElemType->isRecordType() &&
       DeleteScope != AllocationFunctionScope::Global) {
-    auto *RD =
-        cast<CXXRecordDecl>(AllocElemType->castAs<RecordType>()->getDecl());
+    auto *RD = AllocElemType->getAsCXXRecordDecl();
+    assert(RD);
     LookupQualifiedName(FoundDelete, RD);
   }
   if (FoundDelete.isAmbiguous())
@@ -4051,8 +4050,7 @@ Sema::ActOnCXXDelete(SourceLocation StartLoc, bool UseGlobal,
                                    ? diag::err_delete_incomplete
                                    : diag::warn_delete_incomplete,
                                Ex.get())) {
-        if (const RecordType *RT = PointeeElem->getAs<RecordType>())
-          PointeeRD = cast<CXXRecordDecl>(RT->getDecl());
+        PointeeRD = PointeeElem->getAsCXXRecordDecl();
       }
     }
 
@@ -4814,7 +4812,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
     if (FromType->isVectorType() || ToType->isVectorType())
       StepTy = adjustVectorType(Context, FromType, ToType, &ElTy);
     if (ElTy->isBooleanType()) {
-      assert(FromType->castAs<EnumType>()->getDecl()->isFixed() &&
+      assert(FromType->getAsEnumDecl()->isFixed() &&
              SCS.Second == ICK_Integral_Promotion &&
              "only enums with fixed underlying type can promote to bool");
       From = ImpCastExprToType(From, StepTy, CK_IntegralToBoolean, VK_PRValue,
@@ -5478,13 +5476,11 @@ static bool CheckUnaryTypeTraitTypeCompleteness(Sema &S, TypeTrait UTT,
   }
 }
 
-static bool HasNoThrowOperator(const RecordType *RT, OverloadedOperatorKind Op,
+static bool HasNoThrowOperator(CXXRecordDecl *RD, OverloadedOperatorKind Op,
                                Sema &Self, SourceLocation KeyLoc, ASTContext &C,
                                bool (CXXRecordDecl::*HasTrivial)() const,
                                bool (CXXRecordDecl::*HasNonTrivial)() const,
-                               bool (CXXMethodDecl::*IsDesiredOp)() const)
-{
-  CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
+                               bool (CXXMethodDecl::*IsDesiredOp)() const) {
   if ((RD->*HasTrivial)() && !(RD->*HasNonTrivial)())
     return true;
 
@@ -5987,8 +5983,8 @@ static bool EvaluateUnaryTypeTrait(Sema &Self, TypeTrait UTT,
     if (T.isPODType(C) || T->isObjCLifetimeType())
       return true;
 
-    if (const RecordType *RT = T->getAs<RecordType>())
-      return HasNoThrowOperator(RT, OO_Equal, Self, KeyLoc, C,
+    if (CXXRecordDecl *RD = T->getAsCXXRecordDecl())
+      return HasNoThrowOperator(RD, OO_Equal, Self, KeyLoc, C,
                                 &CXXRecordDecl::hasTrivialCopyAssignment,
                                 &CXXRecordDecl::hasNonTrivialCopyAssignment,
                                 &CXXMethodDecl::isCopyAssignmentOperator);
@@ -6000,8 +5996,8 @@ static bool EvaluateUnaryTypeTrait(Sema &Self, TypeTrait UTT,
     if (T.isPODType(C))
       return true;
 
-    if (const RecordType *RT = C.getBaseElementType(T)->getAs<RecordType>())
-      return HasNoThrowOperator(RT, OO_Equal, Self, KeyLoc, C,
+    if (CXXRecordDecl *RD = C.getBaseElementType(T)->getAsCXXRecordDecl())
+      return HasNoThrowOperator(RD, OO_Equal, Self, KeyLoc, C,
                                 &CXXRecordDecl::hasTrivialMoveAssignment,
                                 &CXXRecordDecl::hasNonTrivialMoveAssignment,
                                 &CXXMethodDecl::isMoveAssignmentOperator);
@@ -6556,8 +6552,8 @@ static bool EvaluateBinaryTypeTrait(Sema &Self, TypeTrait BTT, const TypeSourceI
     // Base and Derived are not unions and name the same class type without
     // regard to cv-qualifiers.
 
-    const RecordType *lhsRecord = LhsT->getAs<RecordType>();
-    const RecordType *rhsRecord = RhsT->getAs<RecordType>();
+    const RecordDecl *lhsRecord = LhsT->getAsRecordDecl();
+    const RecordDecl *rhsRecord = RhsT->getAsRecordDecl();
     if (!rhsRecord || !lhsRecord) {
       const ObjCObjectType *LHSObjTy = LhsT->getAs<ObjCObjectType>();
       const ObjCObjectType *RHSObjTy = RhsT->getAs<ObjCObjectType>();
@@ -6582,9 +6578,9 @@ static bool EvaluateBinaryTypeTrait(Sema &Self, TypeTrait BTT, const TypeSourceI
 
     // Unions are never base classes, and never have base classes.
     // It doesn't matter if they are complete or not. See PR#41843
-    if (lhsRecord && lhsRecord->getDecl()->isUnion())
+    if (lhsRecord && lhsRecord->isUnion())
       return false;
-    if (rhsRecord && rhsRecord->getDecl()->isUnion())
+    if (rhsRecord && rhsRecord->isUnion())
       return false;
 
     if (lhsRecord == rhsRecord)
@@ -6599,12 +6595,12 @@ static bool EvaluateBinaryTypeTrait(Sema &Self, TypeTrait BTT, const TypeSourceI
             diag::err_incomplete_type_used_in_type_trait_expr))
       return false;
 
-    return cast<CXXRecordDecl>(rhsRecord->getDecl())
-      ->isDerivedFrom(cast<CXXRecordDecl>(lhsRecord->getDecl()));
+    return cast<CXXRecordDecl>(rhsRecord)->isDerivedFrom(
+        cast<CXXRecordDecl>(lhsRecord));
   }
   case BTT_IsVirtualBaseOf: {
-    const RecordType *BaseRecord = LhsT->getAs<RecordType>();
-    const RecordType *DerivedRecord = RhsT->getAs<RecordType>();
+    const RecordDecl *BaseRecord = LhsT->getAsRecordDecl();
+    const RecordDecl *DerivedRecord = RhsT->getAsRecordDecl();
 
     if (!BaseRecord || !DerivedRecord) {
       DiagnoseVLAInCXXTypeTrait(Self, Lhs,
@@ -6614,19 +6610,19 @@ static bool EvaluateBinaryTypeTrait(Sema &Self, TypeTrait BTT, const TypeSourceI
       return false;
     }
 
-    if (BaseRecord->isUnionType() || DerivedRecord->isUnionType())
+    if (BaseRecord->isUnion() || DerivedRecord->isUnion())
       return false;
 
-    if (!BaseRecord->isStructureOrClassType() ||
-        !DerivedRecord->isStructureOrClassType())
+    if (!BaseRecord->isStructureOrClass() ||
+        !DerivedRecord->isStructureOrClass())
       return false;
 
     if (Self.RequireCompleteType(Rhs->getTypeLoc().getBeginLoc(), RhsT,
                                  diag::err_incomplete_type))
       return false;
 
-    return cast<CXXRecordDecl>(DerivedRecord->getDecl())
-        ->isVirtuallyDerivedFrom(cast<CXXRecordDecl>(BaseRecord->getDecl()));
+    return cast<CXXRecordDecl>(DerivedRecord)
+        ->isVirtuallyDerivedFrom(cast<CXXRecordDecl>(BaseRecord));
   }
   case BTT_IsSame:
     return Self.Context.hasSameType(LhsT, RhsT);
@@ -7118,8 +7114,8 @@ static bool TryClassUnification(Sema &Self, Expr *From, Expr *To,
   //         the same or one is a base class of the other:
   QualType FTy = From->getType();
   QualType TTy = To->getType();
-  const RecordType *FRec = FTy->getAs<RecordType>();
-  const RecordType *TRec = TTy->getAs<RecordType>();
+  const RecordDecl *FRec = FTy->getAsRecordDecl();
+  const RecordDecl *TRec = TTy->getAsRecordDecl();
   bool FDerivedFromT = FRec && TRec && FRec != TRec &&
                        Self.IsDerivedFrom(QuestionLoc, FTy, TTy);
   if (FRec && TRec && (FRec == TRec || FDerivedFromT ||
@@ -8228,11 +8224,11 @@ ExprResult Sema::MaybeBindToTemporary(Expr *E) {
   // Search for the base element type (cf. ASTContext::getBaseElementType) with
   // a fast path for the common case that the type is directly a RecordType.
   const Type *T = Context.getCanonicalType(E->getType().getTypePtr());
-  const RecordType *RT = nullptr;
-  while (!RT) {
+  CXXRecordDecl *RD = nullptr;
+  while (!RD) {
     switch (T->getTypeClass()) {
     case Type::Record:
-      RT = cast<RecordType>(T);
+      RD = T->getAsCXXRecordDecl();
       break;
     case Type::ConstantArray:
     case Type::IncompleteArray:
@@ -8247,7 +8243,6 @@ ExprResult Sema::MaybeBindToTemporary(Expr *E) {
 
   // That should be enough to guarantee that this type is complete, if we're
   // not processing a decltype expression.
-  CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
   if (RD->isInvalidDecl() || RD->isDependentContext())
     return E;
 
@@ -9115,8 +9110,8 @@ ExprResult Sema::IgnoredValueConversions(Expr *E) {
   }
 
   // GCC seems to also exclude expressions of incomplete enum type.
-  if (const EnumType *T = E->getType()->getAs<EnumType>()) {
-    if (!T->getDecl()->isComplete()) {
+  if (const EnumDecl *ED = E->getType()->getAsEnumDecl()) {
+    if (!ED->isComplete()) {
       // FIXME: stupid workaround for a codegen bug!
       E = ImpCastExprToType(E, Context.VoidTy, CK_ToVoid).get();
       return E;

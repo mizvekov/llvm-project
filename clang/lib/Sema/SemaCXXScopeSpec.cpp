@@ -29,16 +29,11 @@ static CXXRecordDecl *getCurrentInstantiationOf(QualType T,
     return nullptr;
 
   const Type *Ty = T->getCanonicalTypeInternal().getTypePtr();
-  if (const RecordType *RecordTy = dyn_cast<RecordType>(Ty)) {
-    CXXRecordDecl *Record = cast<CXXRecordDecl>(RecordTy->getDecl());
-    if (Record->isCurrentInstantiation(CurContext))
-      return Record;
-
-    return nullptr;
-  } else if (isa<InjectedClassNameType>(Ty))
-    return cast<InjectedClassNameType>(Ty)->getDecl();
-  else
-    return nullptr;
+  if (CXXRecordDecl *Record = Ty->getAsCXXRecordDecl();
+      Record && (isa<InjectedClassNameType>(Ty) ||
+                 Record->isCurrentInstantiation(CurContext)))
+    return Record;
+  return nullptr;
 }
 
 DeclContext *Sema::computeDeclContext(QualType T) {
@@ -123,9 +118,9 @@ DeclContext *Sema::computeDeclContext(const CXXScopeSpec &SS,
           if (Context.hasSameType(Injected, QualType(SpecType, 0)))
             return ClassTemplate->getTemplatedDecl();
         }
-      } else if (const RecordType *RecordT = NNSType->getAs<RecordType>()) {
+      } else if (RecordDecl *RD = NNSType->getAsRecordDecl()) {
         // The nested name specifier refers to a member of a class template.
-        return RecordT->getDecl();
+        return RD;
       }
     }
 

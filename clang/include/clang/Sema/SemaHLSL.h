@@ -177,7 +177,7 @@ private:
 private:
   void collectResourceBindingsOnVarDecl(VarDecl *D);
   void collectResourceBindingsOnUserRecordDecl(const VarDecl *VD,
-                                               const RecordType *RT);
+                                               const RecordDecl *RD);
   void processExplicitBindingsOnDecl(VarDecl *D);
 
   void diagnoseAvailabilityViolations(TranslationUnitDecl *TU);

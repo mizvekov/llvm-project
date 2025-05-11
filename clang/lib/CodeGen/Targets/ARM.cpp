@@ -382,8 +382,8 @@ ABIArgInfo ARMABIInfo::classifyArgumentType(QualType Ty, bool isVariadic,
 
   if (!isAggregateTypeForABI(Ty)) {
     // Treat an enum type as its underlying type.
-    if (const EnumType *EnumTy = Ty->getAs<EnumType>()) {
-      Ty = EnumTy->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = Ty->getAsEnumDecl()) {
+      Ty = Enum->getIntegerType();
     }
 
     if (const auto *EIT = Ty->getAs<BitIntType>())
@@ -512,11 +512,11 @@ static bool isIntegerLikeType(QualType Ty, ASTContext &Context,
   // above, but they are not.
 
   // Otherwise, it must be a record type.
-  const RecordType *RT = Ty->getAs<RecordType>();
-  if (!RT) return false;
+  const RecordDecl *RD = Ty->getAsRecordDecl();
+  if (!RD)
+    return false;
 
   // Ignore records with flexible arrays.
-  const RecordDecl *RD = RT->getDecl();
   if (RD->hasFlexibleArrayMember())
     return false;
 
@@ -592,8 +592,8 @@ ABIArgInfo ARMABIInfo::classifyReturnType(QualType RetTy, bool isVariadic,
 
   if (!isAggregateTypeForABI(RetTy)) {
     // Treat an enum type as its underlying type.
-    if (const EnumType *EnumTy = RetTy->getAs<EnumType>())
-      RetTy = EnumTy->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = RetTy->getAsEnumDecl())
+      RetTy = Enum->getIntegerType();
 
     if (const auto *EIT = RetTy->getAs<BitIntType>())
       if (EIT->getNumBits() > 64)
@@ -717,9 +717,7 @@ bool ARMABIInfo::containsAnyFP16Vectors(QualType Ty) const {
     if (NElements == 0)
       return false;
     return containsAnyFP16Vectors(AT->getElementType());
-  } else if (const RecordType *RT = Ty->getAs<RecordType>()) {
-    const RecordDecl *RD = RT->getDecl();
-
+  } else if (const RecordDecl *RD = Ty->getAsRecordDecl()) {
     // If this is a C++ record, check the bases first.
     if (const CXXRecordDecl *CXXRD = dyn_cast<CXXRecordDecl>(RD))
       if (llvm::any_of(CXXRD->bases(), [this](const CXXBaseSpecifier &B) {

@@ -398,10 +398,10 @@ pushTemporaryCleanup(CodeGenFunction &CGF, const MaterializeTemporaryExpr *M,
     case SD_Static:
     case SD_Thread: {
       CXXDestructorDecl *ReferenceTemporaryDtor = nullptr;
-      if (const RecordType *RT =
-              E->getType()->getBaseElementTypeUnsafe()->getAs<RecordType>()) {
+      if (const RecordDecl *RD =
+              E->getType()->getBaseElementTypeUnsafe()->getAsRecordDecl()) {
         // Get the destructor for the reference temporary.
-        if (auto *ClassDecl = dyn_cast<CXXRecordDecl>(RT->getDecl());
+        if (auto *ClassDecl = dyn_cast<CXXRecordDecl>(RD);
             ClassDecl && !ClassDecl->hasTrivialDestructor())
           ReferenceTemporaryDtor = ClassDecl->getDestructor();
       }
@@ -1741,10 +1741,9 @@ static bool isConstantEmittableObjectType(QualType type) {
 
   // Otherwise, all object types satisfy this except C++ classes with
   // mutable subobjects or non-trivial copy/destroy behavior.
-  if (const auto *RT = dyn_cast<RecordType>(type))
-    if (const auto *RD = dyn_cast<CXXRecordDecl>(RT->getDecl()))
-      if (RD->hasMutableFields() || !RD->isTrivial())
-        return false;
+  if (const auto *RD = type->getAsCXXRecordDecl())
+    if (RD->hasMutableFields() || !RD->isTrivial())
+      return false;
 
   return true;
 }
@@ -1904,9 +1903,9 @@ llvm::Value *CodeGenFunction::EmitLoadOfScalar(LValue lvalue,
 static bool getRangeForType(CodeGenFunction &CGF, QualType Ty,
                             llvm::APInt &Min, llvm::APInt &End,
                             bool StrictEnums, bool IsBool) {
-  const EnumType *ET = Ty->getAs<EnumType>();
-  bool IsRegularCPlusPlusEnum = CGF.getLangOpts().CPlusPlus && StrictEnums &&
-                                ET && !ET->getDecl()->isFixed();
+  const EnumDecl *ED = Ty->getAsEnumDecl();
+  bool IsRegularCPlusPlusEnum =
+      CGF.getLangOpts().CPlusPlus && StrictEnums && ED && !ED->isFixed();
   if (!IsBool && !IsRegularCPlusPlusEnum)
     return false;
 
@@ -1914,7 +1913,6 @@ static bool getRangeForType(CodeGenFunction &CGF, QualType Ty,
     Min = llvm::APInt(CGF.getContext().getTypeSize(Ty), 0);
     End = llvm::APInt(CGF.getContext().getTypeSize(Ty), 2);
   } else {
-    const EnumDecl *ED = ET->getDecl();
     ED->getValueRange(End, Min);
   }
   return true;
@@ -1954,7 +1952,7 @@ bool CodeGenFunction::EmitScalarRangeCheck(llvm::Value *Value, QualType Ty,
   bool IsBool = (Ty->hasBooleanRepresentation() && !Ty->isVectorType()) ||
                 NSAPI(CGM.getContext()).isObjCBOOLType(Ty);
   bool NeedsBoolCheck = HasBoolCheck && IsBool;
-  bool NeedsEnumCheck = HasEnumCheck && Ty->getAs<EnumType>();
+  bool NeedsEnumCheck = HasEnumCheck && Ty->getAsEnumDecl();
   if (!NeedsBoolCheck && !NeedsEnumCheck)
     return false;
 
@@ -4217,8 +4215,8 @@ static bool IsPreserveAIArrayBase(CodeGenFunction &CGF, const Expr *ArrayBase) {
 
     const auto *PointeeT = PtrT->getPointeeType()
                              ->getUnqualifiedDesugaredType();
-    if (const auto *RecT = dyn_cast<RecordType>(PointeeT))
-      return RecT->getDecl()->hasAttr<BPFPreserveAccessIndexAttr>();
+    if (const auto *Rec = PointeeT->getAsRecordDecl())
+      return Rec->hasAttr<BPFPreserveAccessIndexAttr>();
     return false;
   }
 
@@ -5498,9 +5496,9 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
 
   case CK_UncheckedDerivedToBase:
   case CK_DerivedToBase: {
-    const auto *DerivedClassTy =
-        E->getSubExpr()->getType()->castAs<RecordType>();
-    auto *DerivedClassDecl = cast<CXXRecordDecl>(DerivedClassTy->getDecl());
+    const auto *DerivedClassDecl =
+        E->getSubExpr()->getType()->getAsCXXRecordDecl();
+    assert(DerivedClassDecl);
 
     LValue LV = EmitLValue(E->getSubExpr());
     Address This = LV.getAddress();
@@ -5519,8 +5517,8 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
   case CK_ToUnion:
     return EmitAggExprToLValue(E);
   case CK_BaseToDerived: {
-    const auto *DerivedClassTy = E->getType()->castAs<RecordType>();
-    auto *DerivedClassDecl = cast<CXXRecordDecl>(DerivedClassTy->getDecl());
+    const auto *DerivedClassDecl = E->getType()->getAsCXXRecordDecl();
+    assert(DerivedClassDecl);
 
     LValue LV = EmitLValue(E->getSubExpr());
 
@@ -6563,8 +6561,7 @@ void CodeGenFunction::FlattenAccessAndType(
         IdxListCopy.push_back(llvm::ConstantInt::get(IdxTy, I));
         WorkList.emplace_back(CAT->getElementType(), IdxListCopy);
       }
-    } else if (const auto *RT = dyn_cast<RecordType>(T)) {
-      const RecordDecl *Record = RT->getDecl();
+    } else if (const auto *Record = T->getAsRecordDecl()) {
       assert(!Record->isUnion() && "Union types not supported in flat cast.");
 
       const CXXRecordDecl *CXXD = dyn_cast<CXXRecordDecl>(Record);

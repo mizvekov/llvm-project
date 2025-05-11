@@ -115,10 +115,10 @@ ABIArgInfo WebAssemblyABIInfo::classifyArgumentType(QualType Ty) const {
       return ABIArgInfo::getDirect(CGT.ConvertType(QualType(SeltTy, 0)));
     // For the experimental multivalue ABI, fully expand all other aggregates
     if (Kind == WebAssemblyABIKind::ExperimentalMV) {
-      const RecordType *RT = Ty->getAs<RecordType>();
-      assert(RT);
+      const RecordDecl *RD = Ty->getAsRecordDecl();
+      assert(RD);
       bool HasBitField = false;
-      for (auto *Field : RT->getDecl()->fields()) {
+      for (auto *Field : RD->fields()) {
         if (Field->isBitField()) {
           HasBitField = true;
           break;

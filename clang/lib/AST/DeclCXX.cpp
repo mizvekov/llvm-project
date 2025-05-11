@@ -227,8 +227,8 @@ CXXRecordDecl::setBases(CXXBaseSpecifier const * const *Bases,
     // Skip dependent types; we can't do any checking on them now.
     if (BaseType->isDependentType())
       continue;
-    auto *BaseClassDecl =
-        cast<CXXRecordDecl>(BaseType->castAs<RecordType>()->getDecl());
+    auto *BaseClassDecl = BaseType->getAsCXXRecordDecl();
+    assert(BaseClassDecl);
 
     // C++2a [class]p7:
     //   A standard-layout class is a class that:
@@ -1217,8 +1217,7 @@ void CXXRecordDecl::addedMember(Decl *D) {
     // those because they are always unnamed.
     bool IsZeroSize = Field->isZeroSize(Context);
 
-    if (const auto *RecordTy = T->getAs<RecordType>()) {
-      auto *FieldRec = cast<CXXRecordDecl>(RecordTy->getDecl());
+    if (auto *FieldRec = T->getAsCXXRecordDecl()) {
       if (FieldRec->getDefinition()) {
         addedClassSubobject(FieldRec);
 
@@ -1460,8 +1459,8 @@ void CXXRecordDecl::addedMember(Decl *D) {
         Ty = Ty->getArrayElementTypeNoTypeQual();
 
       Ty = Ty->getUnqualifiedDesugaredType();
-      if (const RecordType *RT = dyn_cast<RecordType>(Ty))
-        data().IsHLSLIntangible |= RT->getAsCXXRecordDecl()->isHLSLIntangible();
+      if (CXXRecordDecl *RD = Ty->getAsCXXRecordDecl())
+        data().IsHLSLIntangible |= RD->isHLSLIntangible();
       else
         data().IsHLSLIntangible |= (Ty->isHLSLAttributedResourceType() ||
                                     Ty->isHLSLBuiltinIntangibleType());
@@ -1918,14 +1917,14 @@ static void CollectVisibleConversions(
 
   // Collect information recursively from any base classes.
   for (const auto &I : Record->bases()) {
-    const auto *RT = I.getType()->getAs<RecordType>();
-    if (!RT) continue;
+    const auto *Base = I.getType()->getAsCXXRecordDecl();
+    if (!Base)
+      continue;
 
     AccessSpecifier BaseAccess
       = CXXRecordDecl::MergeAccess(Access, I.getAccessSpecifier());
     bool BaseInVirtual = InVirtual || I.isVirtual();
 
-    auto *Base = cast<CXXRecordDecl>(RT->getDecl());
     CollectVisibleConversions(Context, Base, BaseInVirtual, BaseAccess,
                               *HiddenTypes, Output, VOutput, HiddenVBaseCs);
   }
@@ -1960,12 +1959,13 @@ static void CollectVisibleConversions(ASTContext &Context,
 
   // Recursively collect conversions from base classes.
   for (const auto &I : Record->bases()) {
-    const auto *RT = I.getType()->getAs<RecordType>();
-    if (!RT) continue;
+    const auto *RD = I.getType()->getAsCXXRecordDecl();
+    if (!RD)
+      continue;
 
-    CollectVisibleConversions(Context, cast<CXXRecordDecl>(RT->getDecl()),
-                              I.isVirtual(), I.getAccessSpecifier(),
-                              HiddenTypes, Output, VBaseCs, HiddenVBaseCs);
+    CollectVisibleConversions(Context, RD, I.isVirtual(),
+                              I.getAccessSpecifier(), HiddenTypes, Output,
+                              VBaseCs, HiddenVBaseCs);
   }
 
   // Add any unhidden conversions provided by virtual bases.
@@ -2286,8 +2286,8 @@ bool CXXRecordDecl::mayBeAbstract() const {
     return false;
 
   for (const auto &B : bases()) {
-    const auto *BaseDecl =
-        cast<CXXRecordDecl>(B.getType()->castAs<RecordType>()->getDecl());
+    const auto *BaseDecl = B.getType()->getAsCXXRecordDecl();
+    assert(BaseDecl);
     if (BaseDecl->isAbstract())
       return true;
   }
@@ -2447,10 +2447,9 @@ CXXMethodDecl::getCorrespondingMethodInClass(const CXXRecordDecl *RD,
   };
 
   for (const auto &I : RD->bases()) {
-    const RecordType *RT = I.getType()->getAs<RecordType>();
-    if (!RT)
+    CXXRecordDecl *Base = I.getType()->getAsCXXRecordDecl();
+    if (!Base)
       continue;
-    const auto *Base = cast<CXXRecordDecl>(RT->getDecl());
     if (CXXMethodDecl *D = this->getCorrespondingMethodInClass(Base))
       AddFinalOverrider(D);
   }

@@ -28,7 +28,7 @@ using internal::Matcher;
 
 static const RecordDecl *getRecordDeclOfFriend(FriendDecl *FD) {
   QualType Ty = FD->getFriendType()->getType().getCanonicalType();
-  return cast<RecordType>(Ty)->getDecl();
+  return Ty->getAsRecordDecl();
 }
 
 struct ImportExpr : TestImportBase {};

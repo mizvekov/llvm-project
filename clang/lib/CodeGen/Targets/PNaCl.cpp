@@ -66,9 +66,9 @@ ABIArgInfo PNaClABIInfo::classifyArgumentType(QualType Ty) const {
       return getNaturalAlignIndirect(Ty, getDataLayout().getAllocaAddrSpace(),
                                      RAA == CGCXXABI::RAA_DirectInMemory);
     return getNaturalAlignIndirect(Ty, getDataLayout().getAllocaAddrSpace());
-  } else if (const EnumType *EnumTy = Ty->getAs<EnumType>()) {
+  } else if (const EnumDecl *Enum = Ty->getAsEnumDecl()) {
     // Treat an enum type as its underlying type.
-    Ty = EnumTy->getDecl()->getIntegerType();
+    Ty = Enum->getIntegerType();
   } else if (Ty->isFloatingType()) {
     // Floating-point types don't go inreg.
     return ABIArgInfo::getDirect();
@@ -101,8 +101,8 @@ ABIArgInfo PNaClABIInfo::classifyReturnType(QualType RetTy) const {
   }
 
   // Treat an enum type as its underlying type.
-  if (const EnumType *EnumTy = RetTy->getAs<EnumType>())
-    RetTy = EnumTy->getDecl()->getIntegerType();
+  if (const EnumDecl *Enum = RetTy->getAsEnumDecl())
+    RetTy = Enum->getIntegerType();
 
   return (isPromotableIntegerTypeForABI(RetTy) ? ABIArgInfo::getExtend(RetTy)
                                                : ABIArgInfo::getDirect());

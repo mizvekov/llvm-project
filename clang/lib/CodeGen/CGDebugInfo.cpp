@@ -1222,10 +1222,10 @@ static llvm::dwarf::Tag getTagForRecord(const RecordDecl *RD) {
 }
 
 llvm::DICompositeType *
-CGDebugInfo::getOrCreateRecordFwdDecl(const RecordType *Ty,
+CGDebugInfo::getOrCreateRecordFwdDecl(const RecordDecl *RD,
                                       llvm::DIScope *Ctx) {
-  const RecordDecl *RD = Ty->getDecl();
-  if (llvm::DIType *T = getTypeOrNull(CGM.getContext().getRecordType(RD)))
+  QualType Ty = CGM.getContext().getRecordType(RD);
+  if (llvm::DIType *T = getTypeOrNull(Ty))
     return cast<llvm::DICompositeType>(T);
   llvm::DIFile *DefUnit = getOrCreateFile(RD->getLocation());
   const unsigned Line =
@@ -1253,7 +1253,7 @@ CGDebugInfo::getOrCreateRecordFwdDecl(const RecordType *Ty,
   SmallString<256> Identifier;
   // Don't include a linkage name in line tables only.
   if (CGM.getCodeGenOpts().hasReducedDebugInfo())
-    Identifier = getTypeIdentifier(Ty, CGM, TheCU);
+    Identifier = getTypeIdentifier(cast<TagType>(Ty), CGM, TheCU);
   llvm::DICompositeType *RetTy = DBuilder.createReplaceableCompositeType(
       getTagForRecord(RD), RDName, Ctx, DefUnit, Line, 0, Size, Align, Flags,
       Identifier);
@@ -1262,7 +1262,7 @@ CGDebugInfo::getOrCreateRecordFwdDecl(const RecordType *Ty,
       DBuilder.replaceArrays(RetTy, llvm::DINodeArray(),
                              CollectCXXTemplateParams(TSpecial, DefUnit));
   ReplaceMap.emplace_back(
-      std::piecewise_construct, std::make_tuple(Ty),
+      std::piecewise_construct, std::make_tuple(cast<TagType>(Ty)),
       std::make_tuple(static_cast<llvm::Metadata *>(RetTy)));
   return RetTy;
 }
@@ -2268,8 +2268,8 @@ void CGDebugInfo::CollectCXXBasesAux(
     llvm::DINode::DIFlags StartingFlags) {
   const ASTRecordLayout &RL = CGM.getContext().getASTRecordLayout(RD);
   for (const auto &BI : Bases) {
-    const auto *Base =
-        cast<CXXRecordDecl>(BI.getType()->castAs<RecordType>()->getDecl());
+    const auto *Base = BI.getType()->getAsCXXRecordDecl();
+    assert(Base);
     if (!SeenTypes.insert(Base).second)
       continue;
     auto *BaseTy = getOrCreateType(BI.getType(), Unit);
@@ -2691,7 +2691,7 @@ void CGDebugInfo::completeType(const EnumDecl *ED) {
   auto I = TypeCache.find(TyPtr);
   if (I == TypeCache.end() || !cast<llvm::DIType>(I->second)->isForwardDecl())
     return;
-  llvm::DIType *Res = CreateTypeDefinition(Ty->castAs<EnumType>());
+  llvm::DIType *Res = CreateTypeDefinition(ED);
   assert(!Res->isForwardDecl());
   TypeCache[TyPtr].reset(Res);
 }
@@ -2770,7 +2770,7 @@ void CGDebugInfo::completeClass(const RecordDecl *RD) {
   // We want the canonical definition of the structure to not
   // be the typedef. Since that would lead to circular typedef
   // metadata.
-  auto [Res, PrefRes] = CreateTypeDefinition(Ty->castAs<RecordType>());
+  auto [Res, PrefRes] = CreateTypeDefinition(RD);
   assert(!Res->isForwardDecl());
   TypeCache[TyPtr].reset(Res);
 }
@@ -2880,17 +2880,17 @@ void CGDebugInfo::completeRequiredType(const RecordDecl *RD) {
     completeClassData(RD);
 }
 
-llvm::DIType *CGDebugInfo::CreateType(const RecordType *Ty) {
-  RecordDecl *RD = Ty->getDecl();
-  llvm::DIType *T = cast_or_null<llvm::DIType>(getTypeOrNull(QualType(Ty, 0)));
+llvm::DIType *CGDebugInfo::CreateType(const RecordDecl *RD) {
+  QualType Ty = CGM.getContext().getRecordType(RD);
+  llvm::DIType *T = cast_or_null<llvm::DIType>(getTypeOrNull(Ty));
   if (T || shouldOmitDefinition(DebugKind, DebugTypeExtRefs, RD,
                                 CGM.getLangOpts())) {
     if (!T)
-      T = getOrCreateRecordFwdDecl(Ty, getDeclContextDescriptor(RD));
+      T = getOrCreateRecordFwdDecl(RD, getDeclContextDescriptor(RD));
     return T;
   }
 
-  auto [Def, Pref] = CreateTypeDefinition(Ty);
+  auto [Def, Pref] = CreateTypeDefinition(RD);
 
   return Pref ? Pref : Def;
 }
@@ -2908,9 +2908,7 @@ llvm::DIType *CGDebugInfo::GetPreferredNameType(const CXXRecordDecl *RD,
 }
 
 std::pair<llvm::DIType *, llvm::DIType *>
-CGDebugInfo::CreateTypeDefinition(const RecordType *Ty) {
-  RecordDecl *RD = Ty->getDecl();
-
+CGDebugInfo::CreateTypeDefinition(const RecordDecl *RD) {
   // Get overall information about the record type for the debug info.
   llvm::DIFile *DefUnit = getOrCreateFile(RD->getLocation());
 
@@ -2920,7 +2918,7 @@ CGDebugInfo::CreateTypeDefinition(const RecordType *Ty) {
   // its members.  Finally, we create a descriptor for the complete type (which
   // may refer to the forward decl if the struct is recursive) and replace all
   // uses of the forward declaration with the final definition.
-  llvm::DICompositeType *FwdDecl = getOrCreateLimitedType(Ty);
+  llvm::DICompositeType *FwdDecl = getOrCreateLimitedType(RD);
 
   const RecordDecl *D = RD->getDefinition();
   if (!D || !D->isCompleteDefinition())
@@ -2931,7 +2929,7 @@ CGDebugInfo::CreateTypeDefinition(const RecordType *Ty) {
 
   // Push the struct on region stack.
   LexicalBlockStack.emplace_back(&*FwdDecl);
-  RegionMap[Ty->getDecl()].reset(FwdDecl);
+  RegionMap[RD].reset(FwdDecl);
 
   // Convert all the elements.
   SmallVector<llvm::Metadata *, 16> EltTys;
@@ -2953,7 +2951,7 @@ CGDebugInfo::CreateTypeDefinition(const RecordType *Ty) {
     CollectCXXMemberFunctions(CXXDecl, DefUnit, EltTys, FwdDecl);
 
   LexicalBlockStack.pop_back();
-  RegionMap.erase(Ty->getDecl());
+  RegionMap.erase(RD);
 
   llvm::DINodeArray Elements = DBuilder.getOrCreateArray(EltTys);
   DBuilder.replaceArrays(FwdDecl, Elements);
@@ -2962,7 +2960,7 @@ CGDebugInfo::CreateTypeDefinition(const RecordType *Ty) {
     FwdDecl =
         llvm::MDNode::replaceWithPermanent(llvm::TempDICompositeType(FwdDecl));
 
-  RegionMap[Ty->getDecl()].reset(FwdDecl);
+  RegionMap[RD].reset(FwdDecl);
 
   if (CGM.getCodeGenOpts().getDebuggerTuning() == llvm::DebuggerKind::LLDB)
     if (auto *PrefDI = GetPreferredNameType(CXXDecl, DefUnit))
@@ -3539,9 +3537,8 @@ llvm::DIType *CGDebugInfo::CreateType(const HLSLAttributedResourceType *Ty,
   return getOrCreateType(Ty->getWrappedType(), U);
 }
 
-llvm::DIType *CGDebugInfo::CreateEnumType(const EnumType *Ty) {
-  const EnumDecl *ED = Ty->getDecl();
-
+llvm::DIType *CGDebugInfo::CreateEnumType(const EnumDecl *ED) {
+  QualType Ty = CGM.getContext().getEnumType(ED);
   uint64_t Size = 0;
   uint32_t Align = 0;
   if (!ED->getTypeForDecl()->isIncompleteType()) {
@@ -3549,7 +3546,8 @@ llvm::DIType *CGDebugInfo::CreateEnumType(const EnumType *Ty) {
     Align = getDeclAlignIfRequired(ED, CGM.getContext());
   }
 
-  SmallString<256> Identifier = getTypeIdentifier(Ty, CGM, TheCU);
+  SmallString<256> Identifier =
+      getTypeIdentifier(cast<TagType>(Ty), CGM, TheCU);
 
   bool isImportedFromModule =
       DebugTypeExtRefs && ED->isFromASTFile() && ED->getDefinition();
@@ -3575,16 +3573,16 @@ llvm::DIType *CGDebugInfo::CreateEnumType(const EnumType *Ty) {
         0, Size, Align, llvm::DINode::FlagFwdDecl, Identifier);
 
     ReplaceMap.emplace_back(
-        std::piecewise_construct, std::make_tuple(Ty),
+        std::piecewise_construct, std::make_tuple(cast<TagType>(Ty)),
         std::make_tuple(static_cast<llvm::Metadata *>(RetTy)));
     return RetTy;
   }
 
-  return CreateTypeDefinition(Ty);
+  return CreateTypeDefinition(ED);
 }
 
-llvm::DIType *CGDebugInfo::CreateTypeDefinition(const EnumType *Ty) {
-  const EnumDecl *ED = Ty->getDecl();
+llvm::DIType *CGDebugInfo::CreateTypeDefinition(const EnumDecl *ED) {
+  QualType Ty = CGM.getContext().getEnumType(ED);
   uint64_t Size = 0;
   uint32_t Align = 0;
   if (!ED->getTypeForDecl()->isIncompleteType()) {
@@ -3592,7 +3590,8 @@ llvm::DIType *CGDebugInfo::CreateTypeDefinition(const EnumType *Ty) {
     Align = getDeclAlignIfRequired(ED, CGM.getContext());
   }
 
-  SmallString<256> Identifier = getTypeIdentifier(Ty, CGM, TheCU);
+  SmallString<256> Identifier =
+      getTypeIdentifier(cast<TagType>(Ty), CGM, TheCU);
 
   SmallVector<llvm::Metadata *, 16> Enumerators;
   ED = ED->getDefinition();
@@ -3860,9 +3859,9 @@ llvm::DIType *CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile *Unit) {
   case Type::Typedef:
     return CreateType(cast<TypedefType>(Ty), Unit);
   case Type::Record:
-    return CreateType(cast<RecordType>(Ty));
+    return CreateType(cast<RecordType>(Ty)->getDecl());
   case Type::Enum:
-    return CreateEnumType(cast<EnumType>(Ty));
+    return CreateEnumType(cast<EnumType>(Ty)->getDecl());
   case Type::FunctionProto:
   case Type::FunctionNoProto:
     return CreateType(cast<FunctionType>(Ty), Unit);
@@ -3917,8 +3916,8 @@ llvm::DIType *CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile *Unit) {
 }
 
 llvm::DICompositeType *
-CGDebugInfo::getOrCreateLimitedType(const RecordType *Ty) {
-  QualType QTy(Ty, 0);
+CGDebugInfo::getOrCreateLimitedType(const RecordDecl *RD) {
+  QualType QTy = CGM.getContext().getRecordType(RD);
 
   auto *T = cast_or_null<llvm::DICompositeType>(getTypeOrNull(QTy));
 
@@ -3929,7 +3928,7 @@ CGDebugInfo::getOrCreateLimitedType(const RecordType *Ty) {
     return T;
 
   // Otherwise create the type.
-  llvm::DICompositeType *Res = CreateLimitedType(Ty);
+  llvm::DICompositeType *Res = CreateLimitedType(RD);
 
   // Propagate members from the declaration to the definition
   // CreateType(const RecordType*) will overwrite this with the members in the
@@ -3942,9 +3941,7 @@ CGDebugInfo::getOrCreateLimitedType(const RecordType *Ty) {
 }
 
 // TODO: Currently used for context chains when limiting debug info.
-llvm::DICompositeType *CGDebugInfo::CreateLimitedType(const RecordType *Ty) {
-  RecordDecl *RD = Ty->getDecl();
-
+llvm::DICompositeType *CGDebugInfo::CreateLimitedType(const RecordDecl *RD) {
   // Get overall information about the record type for the debug info.
   StringRef RDName = getClassName(RD);
   const SourceLocation Loc = RD->getLocation();
@@ -3968,7 +3965,9 @@ llvm::DICompositeType *CGDebugInfo::CreateLimitedType(const RecordType *Ty) {
   // appropriately marked node and just return it.
   const RecordDecl *D = RD->getDefinition();
   if (!D || !D->isCompleteDefinition())
-    return getOrCreateRecordFwdDecl(Ty, RDContext);
+    return getOrCreateRecordFwdDecl(RD, RDContext);
+
+  QualType Ty = CGM.getContext().getRecordType(RD);
 
   uint64_t Size = CGM.getContext().getTypeSize(Ty);
   // __attribute__((aligned)) can increase or decrease alignment *except* on a
@@ -3977,7 +3976,8 @@ llvm::DICompositeType *CGDebugInfo::CreateLimitedType(const RecordType *Ty) {
   // to be used.
   auto Align = getTypeAlignIfRequired(Ty, CGM.getContext());
 
-  SmallString<256> Identifier = getTypeIdentifier(Ty, CGM, TheCU);
+  SmallString<256> Identifier =
+      getTypeIdentifier(cast<TagType>(Ty), CGM, TheCU);
 
   // Explicitly record the calling convention and export symbols for C++
   // records.
@@ -4030,8 +4030,8 @@ llvm::DICompositeType *CGDebugInfo::CreateLimitedType(const RecordType *Ty) {
     break;
   }
 
-  RegionMap[Ty->getDecl()].reset(RealDecl);
-  TypeCache[QualType(Ty, 0).getAsOpaquePtr()].reset(RealDecl);
+  RegionMap[RD].reset(RealDecl);
+  TypeCache[Ty.getAsOpaquePtr()].reset(RealDecl);
 
   if (const auto *TSpecial = dyn_cast<ClassTemplateSpecializationDecl>(RD))
     DBuilder.replaceArrays(RealDecl, llvm::DINodeArray(),
@@ -4910,10 +4910,9 @@ llvm::DILocalVariable *CGDebugInfo::EmitDeclare(const VarDecl *VD,
       offset = CGM.getContext().toCharUnitsFromBits(XOffset);
       Expr.push_back(offset.getQuantity());
     }
-  } else if (const auto *RT = dyn_cast<RecordType>(VD->getType())) {
+  } else if (const auto *RD = VD->getType()->getAsRecordDecl()) {
     // If VD is an anonymous union then Storage represents value for
     // all union fields.
-    const RecordDecl *RD = RT->getDecl();
     if (RD->isUnion() && RD->isAnonymousStructOrUnion()) {
       // GDB has trouble finding local variables in anonymous unions, so we emit
       // artificial local variables for each of the members.
@@ -4927,7 +4926,7 @@ llvm::DILocalVariable *CGDebugInfo::EmitDeclare(const VarDecl *VD,
         StringRef FieldName = Field->getName();
 
         // Ignore unnamed fields. Do not ignore unnamed records.
-        if (FieldName.empty() && !isa<RecordType>(Field->getType()))
+        if (FieldName.empty() && !Field->getType()->getAsRecordDecl())
           continue;
 
         // Use VarDecl's Tag, Scope and Line number.
@@ -5457,9 +5456,9 @@ llvm::DIGlobalVariableExpression *CGDebugInfo::CollectAnonRecordDecls(
 
     // Ignore unnamed fields, but recurse into anonymous records.
     if (FieldName.empty()) {
-      if (const auto *RT = dyn_cast<RecordType>(Field->getType()))
-        GVE = CollectAnonRecordDecls(RT->getDecl(), Unit, LineNo, LinkageName,
-                                     Var, DContext);
+      if (const auto *RD = Field->getType()->getAsRecordDecl())
+        GVE = CollectAnonRecordDecls(RD, Unit, LineNo, LinkageName, Var,
+                                     DContext);
       continue;
     }
     // Use VarDecl's Tag, Scope and Line number.
@@ -5472,14 +5471,13 @@ llvm::DIGlobalVariableExpression *CGDebugInfo::CollectAnonRecordDecls(
 }
 
 static bool ReferencesAnonymousEntity(ArrayRef<TemplateArgument> Args);
-static bool ReferencesAnonymousEntity(RecordType *RT) {
+static bool ReferencesAnonymousEntity(RecordDecl *RD) {
   // Unnamed classes/lambdas can't be reconstituted due to a lack of column
   // info we produce in the DWARF, so we can't get Clang's full name back.
   // But so long as it's not one of those, it doesn't matter if some sub-type
   // of the record (a template parameter) can't be reconstituted - because the
   // un-reconstitutable type itself will carry its own name.
-  const auto *RD = dyn_cast<CXXRecordDecl>(RT->getDecl());
-  if (!RD)
+  if (!isa<CXXRecordDecl>(RD))
     return false;
   if (!RD->getIdentifier())
     return true;
@@ -5498,7 +5496,7 @@ static bool ReferencesAnonymousEntity(ArrayRef<TemplateArgument> Args) {
           : public RecursiveASTVisitor<ReferencesAnonymous> {
         bool RefAnon = false;
         bool VisitRecordType(RecordType *RT) {
-          if (ReferencesAnonymousEntity(RT)) {
+          if (ReferencesAnonymousEntity(RT->getDecl())) {
             RefAnon = true;
             return false;
           }
@@ -5559,7 +5557,7 @@ struct ReconstitutableType : public RecursiveASTVisitor<ReconstitutableType> {
     return Reconstitutable;
   }
   bool VisitRecordType(RecordType *RT) {
-    if (ReferencesAnonymousEntity(RT)) {
+    if (ReferencesAnonymousEntity(RT->getDecl())) {
       Reconstitutable = false;
       return false;
     }
@@ -5741,7 +5739,8 @@ void CGDebugInfo::EmitGlobalVariable(llvm::GlobalVariable *Var,
   // variable for each member of the anonymous union so that it's possible
   // to find the name of any field in the union.
   if (T->isUnionType() && DeclName.empty()) {
-    const RecordDecl *RD = T->castAs<RecordType>()->getDecl();
+    const RecordDecl *RD = T->getAsRecordDecl();
+    assert(RD);
     assert(RD->isAnonymousStructOrUnion() &&
            "unnamed non-anonymous struct or union?");
     GVE = CollectAnonRecordDecls(RD, Unit, LineNo, LinkageName, Var, DContext);

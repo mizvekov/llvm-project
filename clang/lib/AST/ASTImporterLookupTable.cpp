@@ -27,10 +27,10 @@ struct Builder : RecursiveASTVisitor<Builder> {
   bool VisitTypedefNameDecl(TypedefNameDecl *D) {
     QualType Ty = D->getUnderlyingType();
     Ty = Ty.getCanonicalType();
-    if (const auto *RTy = dyn_cast<RecordType>(Ty)) {
-      LT.add(RTy->getAsRecordDecl());
+    if (auto *RD = Ty->getAsRecordDecl()) {
+      LT.add(RD);
       // iterate over the field decls, adding them
-      for (auto *it : RTy->getAsRecordDecl()->fields()) {
+      for (auto *it : RD->fields()) {
         LT.add(it);
       }
     }

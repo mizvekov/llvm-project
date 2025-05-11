@@ -70,11 +70,9 @@ public:
     QualType DestroyedOrNull = E->getDestroyedType();
     if (!DestroyedOrNull.isNull()) {
       QualType Destroyed = S.Context.getBaseElementType(DestroyedOrNull);
-      if (const RecordType *DestroyedRec = Destroyed->getAs<RecordType>()) {
-        CXXRecordDecl *Record = cast<CXXRecordDecl>(DestroyedRec->getDecl());
-        if (Record->getDefinition())
-          asImpl().visitUsedDecl(E->getBeginLoc(), S.LookupDestructor(Record));
-      }
+      if (CXXRecordDecl *Record = Destroyed->getAsCXXRecordDecl();
+          Record && Record->getDefinition())
+        asImpl().visitUsedDecl(E->getBeginLoc(), S.LookupDestructor(Record));
     }
 
     Inherited::VisitCXXDeleteExpr(E);

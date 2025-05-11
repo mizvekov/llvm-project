@@ -618,7 +618,7 @@ struct StructuralEquivalenceRecordTest : StructuralEquivalenceTest {
   // FIXME Use a common getRecordDecl with ASTImporterTest.cpp!
   RecordDecl *getRecordDecl(FieldDecl *FD) {
     auto *ET = cast<ElaboratedType>(FD->getType().getTypePtr());
-    return cast<RecordType>(ET->getNamedType().getTypePtr())->getDecl();
+    return ET->getNamedType()->getAsRecordDecl();
   };
 };
 
@@ -720,11 +720,11 @@ TEST_F(StructuralEquivalenceRecordTest, AnonymousRecordsShouldBeInequivalent) {
   auto *A = FirstDeclMatcher<IndirectFieldDecl>().match(
       TU, indirectFieldDecl(hasName("a")));
   auto *FA = cast<FieldDecl>(A->chain().front());
-  RecordDecl *RA = cast<RecordType>(FA->getType().getTypePtr())->getDecl();
+  RecordDecl *RA = FA->getType()->getAsRecordDecl();
   auto *B = FirstDeclMatcher<IndirectFieldDecl>().match(
       TU, indirectFieldDecl(hasName("b")));
   auto *FB = cast<FieldDecl>(B->chain().front());
-  RecordDecl *RB = cast<RecordType>(FB->getType().getTypePtr())->getDecl();
+  RecordDecl *RB = FB->getType()->getAsRecordDecl();
 
   ASSERT_NE(RA, RB);
   EXPECT_TRUE(testStructuralMatch(RA, RA));
@@ -753,13 +753,13 @@ TEST_F(StructuralEquivalenceRecordTest,
   auto *A = FirstDeclMatcher<IndirectFieldDecl>().match(
       TU, indirectFieldDecl(hasName("a")));
   auto *FA = cast<FieldDecl>(A->chain().front());
-  RecordDecl *RA = cast<RecordType>(FA->getType().getTypePtr())->getDecl();
+  RecordDecl *RA = FA->getType()->getAsRecordDecl();
 
   auto *TU1 = get<1>(t);
   auto *A1 = FirstDeclMatcher<IndirectFieldDecl>().match(
       TU1, indirectFieldDecl(hasName("a")));
   auto *FA1 = cast<FieldDecl>(A1->chain().front());
-  RecordDecl *RA1 = cast<RecordType>(FA1->getType().getTypePtr())->getDecl();
+  RecordDecl *RA1 = FA1->getType()->getAsRecordDecl();
 
   RecordDecl *X =
       FirstDeclMatcher<RecordDecl>().match(TU, recordDecl(hasName("X")));

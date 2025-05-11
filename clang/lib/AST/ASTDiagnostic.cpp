@@ -1128,13 +1128,12 @@ class TemplateDiff {
     if (const auto* SubstType = Ty->getAs<SubstTemplateTypeParmType>())
       Ty = SubstType->getReplacementType();
 
-    const RecordType *RT = Ty->getAs<RecordType>();
+    const RecordDecl *RD = Ty->getAsRecordDecl();
 
-    if (!RT)
+    if (!RD)
       return nullptr;
 
-    const ClassTemplateSpecializationDecl *CTSD =
-        dyn_cast<ClassTemplateSpecializationDecl>(RT->getDecl());
+    const auto *CTSD = dyn_cast<ClassTemplateSpecializationDecl>(RD);
 
     if (!CTSD)
       return nullptr;

@@ -902,7 +902,8 @@ void APValue::printPretty(raw_ostream &Out, const PrintingPolicy &Policy,
   }
   case APValue::Struct: {
     Out << '{';
-    const RecordDecl *RD = Ty->castAs<RecordType>()->getDecl();
+    const RecordDecl *RD = Ty->getAsRecordDecl();
+    assert(RD);
     bool First = true;
     if (unsigned N = getStructNumBases()) {
       const CXXRecordDecl *CD = cast<CXXRecordDecl>(RD);

@@ -1378,8 +1378,8 @@ void ItaniumCXXABI::emitVirtualObjectDelete(CodeGenFunction &CGF,
     // to pass to the deallocation function.
 
     // Grab the vtable pointer as an intptr_t*.
-    auto *ClassDecl =
-        cast<CXXRecordDecl>(ElementType->castAs<RecordType>()->getDecl());
+    auto *ClassDecl = ElementType->getAsCXXRecordDecl();
+    assert(ClassDecl);
     llvm::Value *VTable = CGF.GetVTablePtr(Ptr, CGF.UnqualPtrTy, ClassDecl);
 
     // Track back to entry -2 and pull out the offset there.
@@ -1464,8 +1464,7 @@ void ItaniumCXXABI::emitThrow(CodeGenFunction &CGF, const CXXThrowExpr *E) {
   // The address of the destructor.  If the exception type has a
   // trivial destructor (or isn't a record), we just pass null.
   llvm::Constant *Dtor = nullptr;
-  if (const RecordType *RecordTy = ThrowType->getAs<RecordType>()) {
-    CXXRecordDecl *Record = cast<CXXRecordDecl>(RecordTy->getDecl());
+  if (const CXXRecordDecl *Record = ThrowType->getAsCXXRecordDecl()) {
     if (!Record->hasTrivialDestructor()) {
       // __cxa_throw is declared to take its destructor as void (*)(void *). We
       // must match that if function pointers can be authenticated with a
@@ -1591,8 +1590,8 @@ llvm::Value *ItaniumCXXABI::EmitTypeid(CodeGenFunction &CGF,
                                        QualType SrcRecordTy,
                                        Address ThisPtr,
                                        llvm::Type *StdTypeInfoPtrTy) {
-  auto *ClassDecl =
-      cast<CXXRecordDecl>(SrcRecordTy->castAs<RecordType>()->getDecl());
+  auto *ClassDecl = SrcRecordTy->getAsCXXRecordDecl();
+  assert(ClassDecl);
   llvm::Value *Value = CGF.GetVTablePtr(ThisPtr, CGM.GlobalsInt8PtrTy,
                                         ClassDecl);
 
@@ -1748,8 +1747,8 @@ llvm::Value *ItaniumCXXABI::emitExactDynamicCast(
 llvm::Value *ItaniumCXXABI::emitDynamicCastToVoid(CodeGenFunction &CGF,
                                                   Address ThisAddr,
                                                   QualType SrcRecordTy) {
-  auto *ClassDecl =
-      cast<CXXRecordDecl>(SrcRecordTy->castAs<RecordType>()->getDecl());
+  auto *ClassDecl = SrcRecordTy->getAsCXXRecordDecl();
+  assert(ClassDecl);
   llvm::Value *OffsetToTop;
   if (CGM.getItaniumVTableContext().isRelativeLayout()) {
     // Get the vtable pointer.
@@ -3739,8 +3738,7 @@ static bool ShouldUseExternalRTTIDescriptor(CodeGenModule &CGM,
   // translation unit that defines any potential key function, too.
   if (!Context.getLangOpts().RTTI) return false;
 
-  if (const RecordType *RecordTy = dyn_cast<RecordType>(Ty)) {
-    const CXXRecordDecl *RD = cast<CXXRecordDecl>(RecordTy->getDecl());
+  if (const CXXRecordDecl *RD = Ty->getAsCXXRecordDecl()) {
     if (!RD->hasDefinition())
       return false;
 
@@ -3773,8 +3771,8 @@ static bool ShouldUseExternalRTTIDescriptor(CodeGenModule &CGM,
 }
 
 /// IsIncompleteClassType - Returns whether the given record type is incomplete.
-static bool IsIncompleteClassType(const RecordType *RecordTy) {
-  return !RecordTy->getDecl()->isCompleteDefinition();
+static bool IsIncompleteClass(const RecordDecl *Record) {
+  return !Record->isCompleteDefinition();
 }
 
 /// ContainsIncompleteClassType - Returns whether the given type contains an
@@ -3789,8 +3787,8 @@ static bool IsIncompleteClassType(const RecordType *RecordTy) {
 ///     incomplete class type.
 /// is an indirect or direct pointer to an incomplete class type.
 static bool ContainsIncompleteClassType(QualType Ty) {
-  if (const RecordType *RecordTy = dyn_cast<RecordType>(Ty)) {
-    if (IsIncompleteClassType(RecordTy))
+  if (const RecordDecl *Record = Ty->getAsRecordDecl()) {
+    if (IsIncompleteClass(Record))
       return true;
   }
 
@@ -3800,9 +3798,7 @@ static bool ContainsIncompleteClassType(QualType Ty) {
   if (const MemberPointerType *MemberPointerTy =
       dyn_cast<MemberPointerType>(Ty)) {
     // Check if the class type is incomplete.
-    const auto *ClassType = cast<RecordType>(
-        MemberPointerTy->getMostRecentCXXRecordDecl()->getTypeForDecl());
-    if (IsIncompleteClassType(ClassType))
+    if (IsIncompleteClass(MemberPointerTy->getMostRecentCXXRecordDecl()))
       return true;
 
     return ContainsIncompleteClassType(MemberPointerTy->getPointeeType());
@@ -3831,8 +3827,8 @@ static bool CanUseSingleInheritance(const CXXRecordDecl *RD) {
     return false;
 
   // Check that the class is dynamic iff the base is.
-  auto *BaseDecl =
-      cast<CXXRecordDecl>(Base->getType()->castAs<RecordType>()->getDecl());
+  auto *BaseDecl = Base->getType()->getAsCXXRecordDecl();
+  assert(BaseDecl);
   if (!BaseDecl->isEmpty() &&
       BaseDecl->isDynamicClass() != RD->isDynamicClass())
     return false;
@@ -4031,8 +4027,7 @@ static llvm::GlobalVariable::LinkageTypes getTypeInfoLinkage(CodeGenModule &CGM,
     if (!CGM.getLangOpts().RTTI)
       return llvm::GlobalValue::LinkOnceODRLinkage;
 
-    if (const RecordType *Record = dyn_cast<RecordType>(Ty)) {
-      const CXXRecordDecl *RD = cast<CXXRecordDecl>(Record->getDecl());
+    if (const CXXRecordDecl *RD = Ty->getAsCXXRecordDecl()) {
       if (RD->hasAttr<WeakAttr>())
         return llvm::GlobalValue::WeakODRLinkage;
       if (CGM.getTriple().isWindowsItaniumEnvironment())
@@ -4244,8 +4239,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(
   auto GVDLLStorageClass = DLLStorageClass;
   if (CGM.getTarget().hasPS4DLLImportExport() &&
       GVDLLStorageClass != llvm::GlobalVariable::DLLExportStorageClass) {
-    if (const RecordType *RecordTy = dyn_cast<RecordType>(Ty)) {
-      const CXXRecordDecl *RD = cast<CXXRecordDecl>(RecordTy->getDecl());
+    if (const CXXRecordDecl *RD = Ty->getAsCXXRecordDecl()) {
       if (RD->hasAttr<DLLExportAttr>() ||
           CXXRecordNonInlineHasAttr<DLLExportAttr>(RD))
         GVDLLStorageClass = llvm::GlobalVariable::DLLExportStorageClass;
@@ -4349,8 +4343,8 @@ static unsigned ComputeVMIClassTypeInfoFlags(const CXXBaseSpecifier *Base,
 
   unsigned Flags = 0;
 
-  auto *BaseDecl =
-      cast<CXXRecordDecl>(Base->getType()->castAs<RecordType>()->getDecl());
+  auto *BaseDecl = Base->getType()->getAsCXXRecordDecl();
+  assert(BaseDecl);
 
   if (Base->isVirtual()) {
     // Mark the virtual base as seen.
@@ -4449,8 +4443,8 @@ void ItaniumRTTIBuilder::BuildVMIClassTypeInfo(const CXXRecordDecl *RD) {
     // The __base_type member points to the RTTI for the base type.
     Fields.push_back(ItaniumRTTIBuilder(CXXABI).BuildTypeInfo(Base.getType()));
 
-    auto *BaseDecl =
-        cast<CXXRecordDecl>(Base.getType()->castAs<RecordType>()->getDecl());
+    auto *BaseDecl = Base.getType()->getAsCXXRecordDecl();
+    assert(BaseDecl);
 
     int64_t OffsetFlags = 0;
 
@@ -4540,9 +4534,8 @@ ItaniumRTTIBuilder::BuildPointerToMemberTypeInfo(const MemberPointerType *Ty) {
   //   attributes of the type pointed to.
   unsigned Flags = extractPBaseFlags(CGM.getContext(), PointeeTy);
 
-  const auto *ClassType =
-      cast<RecordType>(Ty->getMostRecentCXXRecordDecl()->getTypeForDecl());
-  if (IsIncompleteClassType(ClassType))
+  const auto *Class = Ty->getMostRecentCXXRecordDecl();
+  if (IsIncompleteClass(Class))
     Flags |= PTI_ContainingClassIncomplete;
 
   llvm::Type *UnsignedIntLTy =
@@ -4560,8 +4553,8 @@ ItaniumRTTIBuilder::BuildPointerToMemberTypeInfo(const MemberPointerType *Ty) {
   //   __context is a pointer to an abi::__class_type_info corresponding to the
   //   class type containing the member pointed to
   //   (e.g., the "A" in "int A::*").
-  Fields.push_back(
-      ItaniumRTTIBuilder(CXXABI).BuildTypeInfo(QualType(ClassType, 0)));
+  Fields.push_back(ItaniumRTTIBuilder(CXXABI).BuildTypeInfo(
+      CGM.getContext().getRecordType(Class)));
 }
 
 llvm::Constant *ItaniumCXXABI::getAddrOfRTTIDescriptor(QualType Ty) {
@@ -4962,8 +4955,8 @@ static void InitCatchParam(CodeGenFunction &CGF,
     llvm_unreachable("bad evaluation kind");
   }
 
-  assert(isa<RecordType>(CatchType) && "unexpected catch type!");
-  auto catchRD = CatchType->getAsCXXRecordDecl();
+  auto *catchRD = CatchType->getAsCXXRecordDecl();
+  assert(catchRD && "unexpected catch type!");
   CharUnits caughtExnAlignment = CGF.CGM.getClassPointerAlignment(catchRD);
 
   llvm::Type *PtrTy = CGF.UnqualPtrTy; // addrspace 0 ok

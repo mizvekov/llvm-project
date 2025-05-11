@@ -251,14 +251,14 @@ public:
 
   bool Find(const TypedValueRegion *R) {
     QualType T = R->getValueType();
-    if (const RecordType *RT = T->getAsStructureType()) {
-      const RecordDecl *RD = RT->getDecl()->getDefinition();
+    if (const RecordDecl *RD = T->getAsStructDecl()) {
+      RD = RD->getDefinition();
       assert(RD && "Referred record has no definition");
       for (const auto *I : RD->fields()) {
         const FieldRegion *FR = MrMgr.getFieldRegion(I, R);
         FieldChain.push_back(I);
         T = I->getType();
-        if (T->getAsStructureType()) {
+        if (T->getAsStructDecl()) {
           if (Find(FR))
             return true;
         } else {

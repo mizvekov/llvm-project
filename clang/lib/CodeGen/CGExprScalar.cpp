@@ -3479,7 +3479,8 @@ Value *ScalarExprEmitter::VisitOffsetOfExpr(OffsetOfExpr *E) {
 
     case OffsetOfNode::Field: {
       FieldDecl *MemberDecl = ON.getField();
-      RecordDecl *RD = CurrentType->castAs<RecordType>()->getDecl();
+      RecordDecl *RD = CurrentType->getAsRecordDecl();
+      assert(RD);
       const ASTRecordLayout &RL = CGF.getContext().getASTRecordLayout(RD);
 
       // Compute the index of the field in its parent.
@@ -3512,15 +3513,15 @@ Value *ScalarExprEmitter::VisitOffsetOfExpr(OffsetOfExpr *E) {
         continue;
       }
 
-      RecordDecl *RD = CurrentType->castAs<RecordType>()->getDecl();
+      RecordDecl *RD = CurrentType->getAsRecordDecl();
+      assert(RD);
       const ASTRecordLayout &RL = CGF.getContext().getASTRecordLayout(RD);
 
       // Save the element type.
       CurrentType = ON.getBase()->getType();
 
       // Compute the offset to the base.
-      auto *BaseRT = CurrentType->castAs<RecordType>();
-      auto *BaseRD = cast<CXXRecordDecl>(BaseRT->getDecl());
+      auto *BaseRD = CurrentType->getAsCXXRecordDecl();
       CharUnits OffsetInt = RL.getBaseClassOffset(BaseRD);
       Offset = llvm::ConstantInt::get(ResultType, OffsetInt.getQuantity());
       break;

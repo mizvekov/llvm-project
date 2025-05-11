@@ -352,14 +352,15 @@ bool X86_32ABIInfo::shouldReturnTypeInRegister(QualType Ty,
     return shouldReturnTypeInRegister(AT->getElementType(), Context);
 
   // Otherwise, it must be a record type.
-  const RecordType *RT = Ty->getAs<RecordType>();
-  if (!RT) return false;
+  const RecordDecl *RD = Ty->getAsRecordDecl();
+  if (!RD)
+    return false;
 
   // FIXME: Traverse bases here too.
 
   // Structure types are passed in register if all fields would be
   // passed in a register.
-  for (const auto *FD : RT->getDecl()->fields()) {
+  for (const auto *FD : RD->fields()) {
     // Empty fields are ignored.
     if (isEmptyField(Context, FD, true))
       continue;
@@ -426,10 +427,9 @@ static bool addBaseAndFieldSizes(ASTContext &Context, const CXXRecordDecl *RD,
 /// optimizations.
 bool X86_32ABIInfo::canExpandIndirectArgument(QualType Ty) const {
   // We can only expand structure types.
-  const RecordType *RT = Ty->getAs<RecordType>();
-  if (!RT)
+  const RecordDecl *RD = Ty->getAsRecordDecl();
+  if (!RD)
     return false;
-  const RecordDecl *RD = RT->getDecl();
   uint64_t Size = 0;
   if (const CXXRecordDecl *CXXRD = dyn_cast<CXXRecordDecl>(RD)) {
     if (!IsWin32StructABI) {
@@ -507,9 +507,9 @@ ABIArgInfo X86_32ABIInfo::classifyReturnType(QualType RetTy,
   }
 
   if (isAggregateTypeForABI(RetTy)) {
-    if (const RecordType *RT = RetTy->getAs<RecordType>()) {
+    if (const RecordDecl *RD = RetTy->getAsRecordDecl()) {
       // Structures with flexible arrays are always indirect.
-      if (RT->getDecl()->hasFlexibleArrayMember())
+      if (RD->hasFlexibleArrayMember())
         return getIndirectReturnResult(RetTy, State);
     }
 
@@ -553,8 +553,8 @@ ABIArgInfo X86_32ABIInfo::classifyReturnType(QualType RetTy,
   }
 
   // Treat an enum type as its underlying type.
-  if (const EnumType *EnumTy = RetTy->getAs<EnumType>())
-    RetTy = EnumTy->getDecl()->getIntegerType();
+  if (const EnumDecl *Enum = RetTy->getAsEnumDecl())
+    RetTy = Enum->getIntegerType();
 
   if (const auto *EIT = RetTy->getAs<BitIntType>())
     if (EIT->getNumBits() > 64)
@@ -753,9 +753,9 @@ ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty, CCState &State,
   TypeInfo TI = getContext().getTypeInfo(Ty);
 
   // Check with the C++ ABI first.
-  const RecordType *RT = Ty->getAs<RecordType>();
-  if (RT) {
-    CGCXXABI::RecordArgABI RAA = getRecordArgABI(RT, getCXXABI());
+  const RecordDecl *RD = Ty->getAsRecordDecl();
+  if (RD) {
+    CGCXXABI::RecordArgABI RAA = getRecordArgABI(RD, getCXXABI());
     if (RAA == CGCXXABI::RAA_Indirect) {
       return getIndirectResult(Ty, false, State);
     } else if (State.IsDelegateCall) {
@@ -796,7 +796,7 @@ ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty, CCState &State,
   if (isAggregateTypeForABI(Ty)) {
     // Structures with flexible arrays are always indirect.
     // FIXME: This should not be byval!
-    if (RT && RT->getDecl()->hasFlexibleArrayMember())
+    if (RD && RD->hasFlexibleArrayMember())
       return getIndirectResult(Ty, true, State);
 
     // Ignore empty structs/unions on non-Windows.
@@ -829,9 +829,8 @@ ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty, CCState &State,
     // bytes are not passed indirectly.
     if (IsWin32StructABI && State.Required.isRequiredArg(ArgIndex)) {
       unsigned AlignInBits = 0;
-      if (RT) {
-        const ASTRecordLayout &Layout =
-          getContext().getASTRecordLayout(RT->getDecl());
+      if (RD) {
+        const ASTRecordLayout &Layout = getContext().getASTRecordLayout(RD);
         AlignInBits = getContext().toBits(Layout.getRequiredAlignment());
       } else if (TI.isAlignRequired()) {
         AlignInBits = TI.Align;
@@ -881,9 +880,8 @@ ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty, CCState &State,
     return ABIArgInfo::getDirect();
   }
 
-
-  if (const EnumType *EnumTy = Ty->getAs<EnumType>())
-    Ty = EnumTy->getDecl()->getIntegerType();
+  if (const EnumDecl *Enum = Ty->getAsEnumDecl())
+    Ty = Enum->getIntegerType();
 
   bool InReg = shouldPrimitiveUseInReg(Ty, State);
 
@@ -1846,9 +1844,9 @@ void X86_64ABIInfo::classify(QualType Ty, uint64_t OffsetBase, Class &Lo,
     return;
   }
 
-  if (const EnumType *ET = Ty->getAs<EnumType>()) {
+  if (const EnumDecl *ED = Ty->getAsEnumDecl()) {
     // Classify the underlying integer type.
-    classify(ET->getDecl()->getIntegerType(), OffsetBase, Lo, Hi, isNamedArg);
+    classify(ED->getIntegerType(), OffsetBase, Lo, Hi, isNamedArg);
     return;
   }
 
@@ -2040,7 +2038,7 @@ void X86_64ABIInfo::classify(QualType Ty, uint64_t OffsetBase, Class &Lo,
     return;
   }
 
-  if (const RecordType *RT = Ty->getAs<RecordType>()) {
+  if (const RecordDecl *RD = Ty->getAsRecordDecl()) {
     uint64_t Size = getContext().getTypeSize(Ty);
 
     // AMD64-ABI 3.2.3p2: Rule 1. If the size of an object is larger
@@ -2051,10 +2049,8 @@ void X86_64ABIInfo::classify(QualType Ty, uint64_t OffsetBase, Class &Lo,
     // AMD64-ABI 3.2.3p2: Rule 2. If a C++ object has either a non-trivial
     // copy constructor or a non-trivial destructor, it is passed by invisible
     // reference.
-    if (getRecordArgABI(RT, getCXXABI()))
+    if (getRecordArgABI(RD, getCXXABI()))
       return;
-
-    const RecordDecl *RD = RT->getDecl();
 
     // Assume variable sized types are passed in memory.
     if (RD->hasFlexibleArrayMember())
@@ -2070,8 +2066,8 @@ void X86_64ABIInfo::classify(QualType Ty, uint64_t OffsetBase, Class &Lo,
       for (const auto &I : CXXRD->bases()) {
         assert(!I.isVirtual() && !I.getType()->isDependentType() &&
                "Unexpected base class!");
-        const auto *Base =
-            cast<CXXRecordDecl>(I.getType()->castAs<RecordType>()->getDecl());
+        const auto *Base = I.getType()->getAsCXXRecordDecl();
+        assert(Base);
 
         // Classify this field.
         //
@@ -2103,7 +2099,7 @@ void X86_64ABIInfo::classify(QualType Ty, uint64_t OffsetBase, Class &Lo,
     bool UseClang11Compat = getContext().getLangOpts().getClangABICompat() <=
                                 LangOptions::ClangABI::Ver11 ||
                             getContext().getTargetInfo().getTriple().isPS();
-    bool IsUnion = RT->isUnionType() && !UseClang11Compat;
+    bool IsUnion = RD->isUnion() && !UseClang11Compat;
 
     for (RecordDecl::field_iterator i = RD->field_begin(), e = RD->field_end();
            i != e; ++i, ++idx) {
@@ -2184,8 +2180,8 @@ ABIArgInfo X86_64ABIInfo::getIndirectReturnResult(QualType Ty) const {
   // place naturally.
   if (!isAggregateTypeForABI(Ty)) {
     // Treat an enum type as its underlying type.
-    if (const EnumType *EnumTy = Ty->getAs<EnumType>())
-      Ty = EnumTy->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = Ty->getAsEnumDecl())
+      Ty = Enum->getIntegerType();
 
     if (Ty->isBitIntType())
       return getNaturalAlignIndirect(Ty, getDataLayout().getAllocaAddrSpace());
@@ -2226,8 +2222,8 @@ ABIArgInfo X86_64ABIInfo::getIndirectResult(QualType Ty,
   if (!isAggregateTypeForABI(Ty) && !IsIllegalVectorType(Ty) &&
       !Ty->isBitIntType()) {
     // Treat an enum type as its underlying type.
-    if (const EnumType *EnumTy = Ty->getAs<EnumType>())
-      Ty = EnumTy->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = Ty->getAsEnumDecl())
+      Ty = Enum->getIntegerType();
 
     return (isPromotableIntegerTypeForABI(Ty) ? ABIArgInfo::getExtend(Ty)
                                               : ABIArgInfo::getDirect());
@@ -2347,8 +2343,7 @@ static bool BitsContainNoUserData(QualType Ty, unsigned StartBit,
     return true;
   }
 
-  if (const RecordType *RT = Ty->getAs<RecordType>()) {
-    const RecordDecl *RD = RT->getDecl();
+  if (const RecordDecl *RD = Ty->getAsRecordDecl()) {
     const ASTRecordLayout &Layout = Context.getASTRecordLayout(RD);
 
     // If this is a C++ record, check the bases first.
@@ -2356,8 +2351,8 @@ static bool BitsContainNoUserData(QualType Ty, unsigned StartBit,
       for (const auto &I : CXXRD->bases()) {
         assert(!I.isVirtual() && !I.getType()->isDependentType() &&
                "Unexpected base class!");
-        const auto *Base =
-            cast<CXXRecordDecl>(I.getType()->castAs<RecordType>()->getDecl());
+        const auto *Base = I.getType()->getAsCXXRecordDecl();
+        assert(Base);
 
         // If the base is after the span we care about, ignore it.
         unsigned BaseOffset = Context.toBits(Layout.getBaseClassOffset(Base));
@@ -2633,8 +2628,8 @@ classifyReturnType(QualType RetTy) const {
     // so that the parameter gets the right LLVM IR attributes.
     if (Hi == NoClass && isa<llvm::IntegerType>(ResType)) {
       // Treat an enum type as its underlying type.
-      if (const EnumType *EnumTy = RetTy->getAs<EnumType>())
-        RetTy = EnumTy->getDecl()->getIntegerType();
+      if (const EnumDecl *Enum = RetTy->getAsEnumDecl())
+        RetTy = Enum->getIntegerType();
 
       if (RetTy->isIntegralOrEnumerationType() &&
           isPromotableIntegerTypeForABI(RetTy))
@@ -2777,8 +2772,8 @@ X86_64ABIInfo::classifyArgumentType(QualType Ty, unsigned freeIntRegs,
     // so that the parameter gets the right LLVM IR attributes.
     if (Hi == NoClass && isa<llvm::IntegerType>(ResType)) {
       // Treat an enum type as its underlying type.
-      if (const EnumType *EnumTy = Ty->getAs<EnumType>())
-        Ty = EnumTy->getDecl()->getIntegerType();
+      if (const EnumDecl *Enum = Ty->getAsEnumDecl())
+        Ty = Enum->getIntegerType();
 
       if (Ty->isIntegralOrEnumerationType() &&
           isPromotableIntegerTypeForABI(Ty))
@@ -2852,14 +2847,14 @@ ABIArgInfo
 X86_64ABIInfo::classifyRegCallStructTypeImpl(QualType Ty, unsigned &NeededInt,
                                              unsigned &NeededSSE,
                                              unsigned &MaxVectorWidth) const {
-  auto RT = Ty->getAs<RecordType>();
-  assert(RT && "classifyRegCallStructType only valid with struct types");
+  auto RD = Ty->getAsRecordDecl();
+  assert(RD && "classifyRegCallStructType only valid with struct types");
 
-  if (RT->getDecl()->hasFlexibleArrayMember())
+  if (RD->hasFlexibleArrayMember())
     return getIndirectReturnResult(Ty);
 
   // Sum up bases
-  if (auto CXXRD = dyn_cast<CXXRecordDecl>(RT->getDecl())) {
+  if (auto CXXRD = dyn_cast<CXXRecordDecl>(RD)) {
     if (CXXRD->isDynamicClass()) {
       NeededInt = NeededSSE = 0;
       return getIndirectReturnResult(Ty);
@@ -2875,7 +2870,7 @@ X86_64ABIInfo::classifyRegCallStructTypeImpl(QualType Ty, unsigned &NeededInt,
   }
 
   // Sum up members
-  for (const auto *FD : RT->getDecl()->fields()) {
+  for (const auto *FD : RD->fields()) {
     QualType MTy = FD->getType();
     if (MTy->isRecordType() && !MTy->isUnionType()) {
       if (classifyRegCallStructTypeImpl(MTy, NeededInt, NeededSSE,
@@ -3298,22 +3293,22 @@ ABIArgInfo WinX86_64ABIInfo::classify(QualType Ty, unsigned &FreeSSERegs,
   if (Ty->isVoidType())
     return ABIArgInfo::getIgnore();
 
-  if (const EnumType *EnumTy = Ty->getAs<EnumType>())
-    Ty = EnumTy->getDecl()->getIntegerType();
+  if (const EnumDecl *Enum = Ty->getAsEnumDecl())
+    Ty = Enum->getIntegerType();
 
   TypeInfo Info = getContext().getTypeInfo(Ty);
   uint64_t Width = Info.Width;
   CharUnits Align = getContext().toCharUnitsFromBits(Info.Align);
 
-  const RecordType *RT = Ty->getAs<RecordType>();
-  if (RT) {
+  const RecordDecl *RD = Ty->getAsRecordDecl();
+  if (RD) {
     if (!IsReturnType) {
-      if (CGCXXABI::RecordArgABI RAA = getRecordArgABI(RT, getCXXABI()))
+      if (CGCXXABI::RecordArgABI RAA = getRecordArgABI(RD, getCXXABI()))
         return getNaturalAlignIndirect(Ty, getDataLayout().getAllocaAddrSpace(),
                                        RAA == CGCXXABI::RAA_DirectInMemory);
     }
 
-    if (RT->getDecl()->hasFlexibleArrayMember())
+    if (RD->hasFlexibleArrayMember())
       return getNaturalAlignIndirect(Ty, getDataLayout().getAllocaAddrSpace(),
                                      /*ByVal=*/false);
   }
@@ -3358,7 +3353,7 @@ ABIArgInfo WinX86_64ABIInfo::classify(QualType Ty, unsigned &FreeSSERegs,
       return ABIArgInfo::getDirect();
   }
 
-  if (RT || Ty->isAnyComplexType() || Ty->isMemberPointerType()) {
+  if (RD || Ty->isAnyComplexType() || Ty->isMemberPointerType()) {
     // MS x64 ABI requirement: "Any argument that doesn't fit in 8 bytes, or is
     // not 1, 2, 4, or 8 bytes, must be passed by reference."
     if (Width > 64 || !llvm::isPowerOf2_64(Width))

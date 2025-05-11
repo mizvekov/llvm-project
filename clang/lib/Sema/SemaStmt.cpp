@@ -1287,17 +1287,15 @@ static void checkEnumTypesInSwitchStmt(Sema &S, const Expr *Cond,
   QualType CondType = Cond->getType();
   QualType CaseType = Case->getType();
 
-  const EnumType *CondEnumType = CondType->getAs<EnumType>();
-  const EnumType *CaseEnumType = CaseType->getAs<EnumType>();
-  if (!CondEnumType || !CaseEnumType)
+  const EnumDecl *CondEnum = CondType->getAsEnumDecl();
+  const EnumDecl *CaseEnum = CaseType->getAsEnumDecl();
+  if (!CondEnum || !CaseEnum)
     return;
 
   // Ignore anonymous enums.
-  if (!CondEnumType->getDecl()->getIdentifier() &&
-      !CondEnumType->getDecl()->getTypedefNameForAnonDecl())
+  if (!CondEnum->getIdentifier() && !CondEnum->getTypedefNameForAnonDecl())
     return;
-  if (!CaseEnumType->getDecl()->getIdentifier() &&
-      !CaseEnumType->getDecl()->getTypedefNameForAnonDecl())
+  if (!CaseEnum->getIdentifier() && !CaseEnum->getTypedefNameForAnonDecl())
     return;
 
   if (S.Context.hasSameUnqualifiedType(CondType, CaseType))
@@ -1606,13 +1604,11 @@ Sema::ActOnFinishSwitchStmt(SourceLocation SwitchLoc, Stmt *Switch,
     // we still do the analysis to preserve this information in the AST
     // (which can be used by flow-based analyes).
     //
-    const EnumType *ET = CondTypeBeforePromotion->getAs<EnumType>();
+    const EnumDecl *ED = CondTypeBeforePromotion->getAsEnumDecl();
 
     // If switch has default case, then ignore it.
     if (!CaseListIsErroneous && !CaseListIsIncomplete && !HasConstantCond &&
-        ET && ET->getDecl()->isCompleteDefinition() &&
-        !ET->getDecl()->enumerators().empty()) {
-      const EnumDecl *ED = ET->getDecl();
+        ED && ED->isCompleteDefinition() && !ED->enumerators().empty()) {
       EnumValsTy EnumVals;
 
       // Gather all enum values, set their type and sort them,
@@ -1741,7 +1737,7 @@ Sema::DiagnoseAssignmentEnum(QualType DstType, QualType SrcType,
   if (Diags.isIgnored(diag::warn_not_in_enum_assignment, SrcExpr->getExprLoc()))
     return;
 
-  if (const EnumType *ET = DstType->getAs<EnumType>())
+  if (const EnumDecl *ED = DstType->getAsEnumDecl())
     if (!Context.hasSameUnqualifiedType(SrcType, DstType) &&
         SrcType->isIntegerType()) {
       if (!SrcExpr->isTypeDependent() && !SrcExpr->isValueDependent() &&
@@ -1752,7 +1748,6 @@ Sema::DiagnoseAssignmentEnum(QualType DstType, QualType SrcType,
 
         llvm::APSInt RhsVal = SrcExpr->EvaluateKnownConstInt(Context);
         AdjustAPSInt(RhsVal, DstWidth, DstIsSigned);
-        const EnumDecl *ED = ET->getDecl();
 
         if (!ED->isClosed())
           return;
@@ -3925,8 +3920,8 @@ StmtResult Sema::BuildReturnStmt(SourceLocation ReturnLoc, Expr *RetValExp,
         Diag(ReturnLoc, diag::warn_main_returns_bool_literal)
             << RetValExp->getSourceRange();
     if (FD->hasAttr<CmseNSEntryAttr>() && RetValExp) {
-      if (const auto *RT = dyn_cast<RecordType>(FnRetType.getCanonicalType())) {
-        if (RT->getDecl()->isOrContainsUnion())
+      if (const auto *RD = FnRetType.getCanonicalType()->getAsRecordDecl()) {
+        if (RD->isOrContainsUnion())
           Diag(RetValExp->getBeginLoc(), diag::warn_cmse_nonsecure_union) << 1;
       }
     }

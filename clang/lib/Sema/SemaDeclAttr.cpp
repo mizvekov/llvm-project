@@ -169,7 +169,7 @@ static bool isIntOrBool(Expr *Exp) {
 
 // Check to see if the type is a smart pointer of some kind.  We assume
 // it's a smart pointer if it defines both operator-> and operator*.
-static bool threadSafetyCheckIsSmartPointer(Sema &S, const RecordType* RT) {
+static bool threadSafetyCheckIsSmartPointer(Sema &S, const RecordDecl *Record) {
   auto IsOverloadedOperatorPresent = [&S](const RecordDecl *Record,
                                           OverloadedOperatorKind Op) {
     DeclContextLookupResult Result =
@@ -177,7 +177,6 @@ static bool threadSafetyCheckIsSmartPointer(Sema &S, const RecordType* RT) {
     return !Result.empty();
   };
 
-  const RecordDecl *Record = RT->getDecl();
   bool foundStarOperator = IsOverloadedOperatorPresent(Record, OO_Star);
   bool foundArrowOperator = IsOverloadedOperatorPresent(Record, OO_Arrow);
   if (foundStarOperator && foundArrowOperator)
@@ -212,14 +211,14 @@ static bool threadSafetyCheckIsPointer(Sema &S, const Decl *D,
   if (QT->isAnyPointerType())
     return true;
 
-  if (const auto *RT = QT->getAs<RecordType>()) {
+  if (const auto *RD = QT->getAsRecordDecl()) {
     // If it's an incomplete type, it could be a smart pointer; skip it.
     // (We don't want to force template instantiation if we can avoid it,
     // since that would alter the order in which templates are instantiated.)
-    if (RT->isIncompleteType())
+    if (!RD->isCompleteDefinition())
       return true;
 
-    if (threadSafetyCheckIsSmartPointer(S, RT))
+    if (threadSafetyCheckIsSmartPointer(S, RD))
       return true;
   }
 
@@ -229,13 +228,13 @@ static bool threadSafetyCheckIsPointer(Sema &S, const Decl *D,
 
 /// Checks that the passed in QualType either is of RecordType or points
 /// to RecordType. Returns the relevant RecordType, null if it does not exit.
-static const RecordType *getRecordType(QualType QT) {
-  if (const auto *RT = QT->getAs<RecordType>())
-    return RT;
+static RecordDecl *getRecordDecl(QualType QT) {
+  if (auto *RD = QT->getAsRecordDecl())
+    return RD;
 
   // Now check if we point to record type.
   if (const auto *PT = QT->getAs<PointerType>())
-    return PT->getPointeeType()->getAs<RecordType>();
+    return PT->getPointeeType()->getAsRecordDecl();
 
   return nullptr;
 }
@@ -257,34 +256,34 @@ static bool checkRecordDeclForAttr(const RecordDecl *RD) {
 }
 
 static bool checkRecordTypeForCapability(Sema &S, QualType Ty) {
-  const RecordType *RT = getRecordType(Ty);
+  const RecordDecl *RD = getRecordDecl(Ty);
 
-  if (!RT)
+  if (!RD)
     return false;
 
   // Don't check for the capability if the class hasn't been defined yet.
-  if (RT->isIncompleteType())
+  if (!RD->isCompleteDefinition())
     return true;
 
   // Allow smart pointers to be used as capability objects.
   // FIXME -- Check the type that the smart pointer points to.
-  if (threadSafetyCheckIsSmartPointer(S, RT))
+  if (threadSafetyCheckIsSmartPointer(S, RD))
     return true;
 
-  return checkRecordDeclForAttr<CapabilityAttr>(RT->getDecl());
+  return checkRecordDeclForAttr<CapabilityAttr>(RD);
 }
 
 static bool checkRecordTypeForScopedCapability(Sema &S, QualType Ty) {
-  const RecordType *RT = getRecordType(Ty);
+  const RecordDecl *RD = getRecordDecl(Ty);
 
-  if (!RT)
+  if (!RD)
     return false;
 
   // Don't check for the capability if the class hasn't been defined yet.
-  if (RT->isIncompleteType())
+  if (!RD->isCompleteDefinition())
     return true;
 
-  return checkRecordDeclForAttr<ScopedLockableAttr>(RT->getDecl());
+  return checkRecordDeclForAttr<ScopedLockableAttr>(RD);
 }
 
 static bool checkTypedefTypeForCapability(QualType Ty) {
@@ -399,10 +398,10 @@ static void checkAttrArgsAreCapabilityObjs(Sema &S, Decl *D,
             ArgTy = DRE->getDecl()->getType();
 
     // First see if we can just cast to record type, or pointer to record type.
-    const RecordType *RT = getRecordType(ArgTy);
+    const RecordDecl *RD = getRecordDecl(ArgTy);
 
     // Now check if we index into a record type function param.
-    if(!RT && ParamIdxOk) {
+    if (!RD && ParamIdxOk) {
       const auto *FD = dyn_cast<FunctionDecl>(D);
       const auto *IL = dyn_cast<IntegerLiteral>(ArgExp);
       if(FD && IL) {
@@ -1238,9 +1237,8 @@ bool Sema::isValidPointerAttrType(QualType T, bool RefOkay) {
 
   // The nonnull attribute, and other similar attributes, can be applied to a
   // transparent union that contains a pointer type.
-  if (const RecordType *UT = T->getAsUnionType()) {
-    if (UT && UT->getDecl()->hasAttr<TransparentUnionAttr>()) {
-      RecordDecl *UD = UT->getDecl();
+  if (const RecordDecl *UD = T->getAsUnionDecl()) {
+    if (UD && UD->hasAttr<TransparentUnionAttr>()) {
       for (const auto *I : UD->fields()) {
         QualType QT = I->getType();
         if (QT->isAnyPointerType() || QT->isBlockPointerType())
@@ -3734,7 +3732,7 @@ static void handleInitPriorityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   QualType T = cast<VarDecl>(D)->getType();
   if (S.Context.getAsArrayType(T))
     T = S.Context.getBaseElementType(T);
-  if (!T->getAs<RecordType>()) {
+  if (!T->getAsRecordDecl()) {
     S.Diag(AL.getLoc(), diag::err_init_priority_object_attr);
     AL.setInvalid();
     return;
@@ -4258,7 +4256,7 @@ static void handleTransparentUnionAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   RecordDecl *RD = nullptr;
   const auto *TD = dyn_cast<TypedefNameDecl>(D);
   if (TD && TD->getUnderlyingType()->isUnionType())
-    RD = TD->getUnderlyingType()->getAsUnionType()->getDecl();
+    RD = TD->getUnderlyingType()->getAsUnionDecl();
   else
     RD = dyn_cast<RecordDecl>(D);
 
@@ -4831,14 +4829,14 @@ void Sema::AddModeAttr(Decl *D, const AttributeCommonInfo &CI,
   // GCC allows 'mode' attribute on enumeration types (even incomplete), except
   // for vector modes. So, 'enum X __attribute__((mode(QI)));' forms a complete
   // type, 'enum { A } __attribute__((mode(V4SI)))' is rejected.
-  if ((isa<EnumDecl>(D) || OldElemTy->getAs<EnumType>()) &&
+  if ((isa<EnumDecl>(D) || OldElemTy->getAsEnumDecl()) &&
       VectorSize.getBoolValue()) {
     Diag(AttrLoc, diag::err_enum_mode_vector_type) << Name << CI.getRange();
     return;
   }
   bool IntegralOrAnyEnumType = (OldElemTy->isIntegralOrEnumerationType() &&
                                 !OldElemTy->isBitIntType()) ||
-                               OldElemTy->getAs<EnumType>();
+                               OldElemTy->getAsEnumDecl();
 
   if (!OldElemTy->getAs<BuiltinType>() && !OldElemTy->isComplexType() &&
       !IntegralOrAnyEnumType)

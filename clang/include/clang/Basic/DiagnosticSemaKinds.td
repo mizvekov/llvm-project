@@ -6822,7 +6822,7 @@ def err_counted_by_on_incomplete_type_on_use : Error <
 
 def note_counted_by_consider_completing_pointee_ty : Note<
   "consider providing a complete definition for %0">;
-  
+
 def note_counted_by_consider_using_sized_by : Note<
   "consider using '__sized_by%select{|_or_null}0' instead of "
   "'__counted_by%select{|_or_null}0'">;
@@ -8176,7 +8176,7 @@ def warn_undefined_reinterpret_cast : Warning<
 def err_ambiguous_base_to_derived_cast : Error<
   "ambiguous cast from base %0 to derived %1:%2">;
 def err_static_downcast_via_virtual : Error<
-  "cannot cast %0 to %1 via virtual base %2">;
+  "cannot cast %0 to %1 via virtual base %q2">;
 def err_downcast_from_inaccessible_base : Error<
   "cannot cast %select{private|protected}2 base class %1 to %0">;
 def err_upcast_to_inaccessible_base : Error<
@@ -9864,7 +9864,7 @@ def ext_ms_ambiguous_direct_base : ExtWarn<
 
 def err_memptr_conv_via_virtual : Error<
   "conversion from pointer to member of class %0 to pointer to member "
-  "of class %1 via virtual base %2 is not allowed">;
+  "of class %1 via virtual base %q2 is not allowed">;
 
 // C++ member name lookup
 def err_ambiguous_member_multiple_subobjects : Error<

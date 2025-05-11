@@ -713,7 +713,7 @@ static Cl::ModifiableType IsModifiable(ASTContext &Ctx, const Expr *E,
     return Cl::CM_IncompleteType;
 
   // Records with any const fields (recursively) are not modifiable.
-  if (const RecordType *R = CT->getAs<RecordType>())
+  if (const RecordDecl *R = CT->getAsRecordDecl())
     if (R->hasConstFields())
       return Cl::CM_ConstQualifiedField;
 

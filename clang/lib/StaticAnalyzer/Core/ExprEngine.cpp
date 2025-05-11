@@ -3109,7 +3109,7 @@ void ExprEngine::processSwitch(SwitchNodeBuilder& builder) {
   // feasible then it shouldn't be considered for making 'default:' reachable.
   const SwitchStmt *SS = builder.getSwitch();
   const Expr *CondExpr = SS->getCond()->IgnoreParenImpCasts();
-  if (CondExpr->getType()->getAs<EnumType>()) {
+  if (CondExpr->getType()->getAsEnumDecl()) {
     if (SS->isAllEnumCasesCovered())
       return;
   }

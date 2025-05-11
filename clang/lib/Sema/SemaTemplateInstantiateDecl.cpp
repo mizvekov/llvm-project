@@ -6944,16 +6944,14 @@ NamedDecl *Sema::FindInstantiatedDecl(SourceLocation Loc, NamedDecl *D,
     bool IsBeingInstantiated = false;
     if (CXXRecordDecl *Spec = dyn_cast<CXXRecordDecl>(ParentDC)) {
       if (!Spec->isDependentContext()) {
-        QualType T = Context.getTypeDeclType(Spec);
-        const RecordType *Tag = T->getAs<RecordType>();
-        assert(Tag && "type of non-dependent record is not a RecordType");
-        if (Tag->isBeingDefined())
+        if (Spec->isBeingDefined())
           IsBeingInstantiated = true;
-        if (!Tag->isBeingDefined() &&
-            RequireCompleteType(Loc, T, diag::err_incomplete_type))
+        if (!Spec->isBeingDefined() &&
+            RequireCompleteType(Loc, Context.getTypeDeclType(Spec),
+                                diag::err_incomplete_type))
           return nullptr;
 
-        ParentDC = Tag->getDecl();
+        ParentDC = Spec;
       }
     }
 

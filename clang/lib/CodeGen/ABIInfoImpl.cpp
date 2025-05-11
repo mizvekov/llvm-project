@@ -28,8 +28,8 @@ ABIArgInfo DefaultABIInfo::classifyArgumentType(QualType Ty) const {
   }
 
   // Treat an enum type as its underlying type.
-  if (const EnumType *EnumTy = Ty->getAs<EnumType>())
-    Ty = EnumTy->getDecl()->getIntegerType();
+  if (const EnumDecl *Enum = Ty->getAsEnumDecl())
+    Ty = Enum->getIntegerType();
 
   ASTContext &Context = getContext();
   if (const auto *EIT = Ty->getAs<BitIntType>())
@@ -52,8 +52,8 @@ ABIArgInfo DefaultABIInfo::classifyReturnType(QualType RetTy) const {
     return getNaturalAlignIndirect(RetTy, getDataLayout().getAllocaAddrSpace());
 
   // Treat an enum type as its underlying type.
-  if (const EnumType *EnumTy = RetTy->getAs<EnumType>())
-    RetTy = EnumTy->getDecl()->getIntegerType();
+  if (const EnumDecl *Enum = RetTy->getAsEnumDecl())
+    RetTy = Enum->getIntegerType();
 
   if (const auto *EIT = RetTy->getAs<BitIntType>())
     if (EIT->getNumBits() >
@@ -103,11 +103,11 @@ llvm::Type *CodeGen::getVAListElementType(CodeGenFunction &CGF) {
       CGF.getContext().getBuiltinVaListType()->getPointeeType());
 }
 
-CGCXXABI::RecordArgABI CodeGen::getRecordArgABI(const RecordType *RT,
+CGCXXABI::RecordArgABI CodeGen::getRecordArgABI(const RecordDecl *Rec,
                                                 CGCXXABI &CXXABI) {
-  const CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(RT->getDecl());
+  const CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(Rec);
   if (!RD) {
-    if (!RT->getDecl()->canPassInRegisters())
+    if (!Rec->canPassInRegisters())
       return CGCXXABI::RAA_Indirect;
     return CGCXXABI::RAA_Default;
   }
@@ -115,19 +115,18 @@ CGCXXABI::RecordArgABI CodeGen::getRecordArgABI(const RecordType *RT,
 }
 
 CGCXXABI::RecordArgABI CodeGen::getRecordArgABI(QualType T, CGCXXABI &CXXABI) {
-  const RecordType *RT = T->getAs<RecordType>();
-  if (!RT)
+  const RecordDecl *RD = T->getAsRecordDecl();
+  if (!RD)
     return CGCXXABI::RAA_Default;
-  return getRecordArgABI(RT, CXXABI);
+  return getRecordArgABI(RD, CXXABI);
 }
 
 bool CodeGen::classifyReturnType(const CGCXXABI &CXXABI, CGFunctionInfo &FI,
                                  const ABIInfo &Info) {
   QualType Ty = FI.getReturnType();
 
-  if (const auto *RT = Ty->getAs<RecordType>())
-    if (!isa<CXXRecordDecl>(RT->getDecl()) &&
-        !RT->getDecl()->canPassInRegisters()) {
+  if (const auto *RD = Ty->getAsRecordDecl())
+    if (!isa<CXXRecordDecl>(RD) && !RD->canPassInRegisters()) {
       FI.getReturnInfo() = Info.getNaturalAlignIndirect(
           Ty, Info.getDataLayout().getAllocaAddrSpace());
       return true;
@@ -137,8 +136,7 @@ bool CodeGen::classifyReturnType(const CGCXXABI &CXXABI, CGFunctionInfo &FI,
 }
 
 QualType CodeGen::useFirstFieldIfTransparentUnion(QualType Ty) {
-  if (const RecordType *UT = Ty->getAsUnionType()) {
-    const RecordDecl *UD = UT->getDecl();
+  if (const RecordDecl *UD = Ty->getAsUnionDecl()) {
     if (UD->hasAttr<TransparentUnionAttr>()) {
       assert(!UD->field_empty() && "sema created an empty transparent union");
       return UD->field_begin()->getType();
@@ -262,8 +260,8 @@ bool CodeGen::isEmptyField(ASTContext &Context, const FieldDecl *FD,
       WasArray = true;
     }
 
-  const RecordType *RT = FT->getAs<RecordType>();
-  if (!RT)
+  const RecordDecl *RD = FT->getAsRecordDecl();
+  if (!RD)
     return false;
 
   // C++ record fields are never empty, at least in the Itanium ABI.
@@ -276,7 +274,7 @@ bool CodeGen::isEmptyField(ASTContext &Context, const FieldDecl *FD,
   // according to the Itanium ABI.  The exception applies only to records,
   // not arrays of records, so we must also check whether we stripped off an
   // array type above.
-  if (isa<CXXRecordDecl>(RT->getDecl()) &&
+  if (isa<CXXRecordDecl>(RD) &&
       (WasArray || (!AsIfNoUniqueAddr && !FD->hasAttr<NoUniqueAddressAttr>())))
     return false;
 
@@ -285,10 +283,9 @@ bool CodeGen::isEmptyField(ASTContext &Context, const FieldDecl *FD,
 
 bool CodeGen::isEmptyRecord(ASTContext &Context, QualType T, bool AllowArrays,
                             bool AsIfNoUniqueAddr) {
-  const RecordType *RT = T->getAs<RecordType>();
-  if (!RT)
+  const RecordDecl *RD = T->getAsRecordDecl();
+  if (!RD)
     return false;
-  const RecordDecl *RD = RT->getDecl();
   if (RD->hasFlexibleArrayMember())
     return false;
 
@@ -316,11 +313,9 @@ bool CodeGen::isEmptyFieldForLayout(const ASTContext &Context,
 }
 
 bool CodeGen::isEmptyRecordForLayout(const ASTContext &Context, QualType T) {
-  const RecordType *RT = T->getAs<RecordType>();
-  if (!RT)
+  const RecordDecl *RD = T->getAsRecordDecl();
+  if (!RD)
     return false;
-
-  const RecordDecl *RD = RT->getDecl();
 
   // If this is a C++ record, check the bases first.
   if (const CXXRecordDecl *CXXRD = dyn_cast<CXXRecordDecl>(RD)) {
@@ -340,11 +335,10 @@ bool CodeGen::isEmptyRecordForLayout(const ASTContext &Context, QualType T) {
 }
 
 const Type *CodeGen::isSingleElementStruct(QualType T, ASTContext &Context) {
-  const RecordType *RT = T->getAs<RecordType>();
-  if (!RT)
+  const RecordDecl *RD = T->getAsRecordDecl();
+  if (!RD)
     return nullptr;
 
-  const RecordDecl *RD = RT->getDecl();
   if (RD->hasFlexibleArrayMember())
     return nullptr;
 
@@ -460,10 +454,9 @@ bool CodeGen::isSIMDVectorType(ASTContext &Context, QualType Ty) {
 }
 
 bool CodeGen::isRecordWithSIMDVectorType(ASTContext &Context, QualType Ty) {
-  const RecordType *RT = Ty->getAs<RecordType>();
-  if (!RT)
+  const RecordDecl *RD = Ty->getAsRecordDecl();
+  if (!RD)
     return false;
-  const RecordDecl *RD = RT->getDecl();
 
   // If this is a C++ record, check the bases first.
   if (const CXXRecordDecl *CXXRD = dyn_cast<CXXRecordDecl>(RD))

@@ -88,9 +88,9 @@ ABIArgInfo LanaiABIInfo::getIndirectResult(QualType Ty, bool ByVal,
 ABIArgInfo LanaiABIInfo::classifyArgumentType(QualType Ty,
                                               CCState &State) const {
   // Check with the C++ ABI first.
-  const RecordType *RT = Ty->getAs<RecordType>();
-  if (RT) {
-    CGCXXABI::RecordArgABI RAA = getRecordArgABI(RT, getCXXABI());
+  const RecordDecl *RD = Ty->getAsRecordDecl();
+  if (RD) {
+    CGCXXABI::RecordArgABI RAA = getRecordArgABI(RD, getCXXABI());
     if (RAA == CGCXXABI::RAA_Indirect) {
       return getIndirectResult(Ty, /*ByVal=*/false, State);
     } else if (RAA == CGCXXABI::RAA_DirectInMemory) {
@@ -102,7 +102,7 @@ ABIArgInfo LanaiABIInfo::classifyArgumentType(QualType Ty,
 
   if (isAggregateTypeForABI(Ty)) {
     // Structures with flexible arrays are always indirect.
-    if (RT && RT->getDecl()->hasFlexibleArrayMember())
+    if (RD && RD->hasFlexibleArrayMember())
       return getIndirectResult(Ty, /*ByVal=*/true, State);
 
     // Ignore empty structs/unions.
@@ -124,8 +124,8 @@ ABIArgInfo LanaiABIInfo::classifyArgumentType(QualType Ty,
   }
 
   // Treat an enum type as its underlying type.
-  if (const auto *EnumTy = Ty->getAs<EnumType>())
-    Ty = EnumTy->getDecl()->getIntegerType();
+  if (const auto *Enum = Ty->getAsEnumDecl())
+    Ty = Enum->getIntegerType();
 
   bool InReg = shouldUseInReg(Ty, State);
 

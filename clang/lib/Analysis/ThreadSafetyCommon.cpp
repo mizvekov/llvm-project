@@ -89,10 +89,9 @@ static StringRef ClassifyDiagnostic(QualType VDT) {
   // We need to look at the declaration of the type of the value to determine
   // which it is. The type should either be a record or a typedef, or a pointer
   // or reference thereof.
-  if (const auto *RT = VDT->getAs<RecordType>()) {
-    if (const auto *RD = RT->getDecl())
-      if (const auto *CA = RD->getAttr<CapabilityAttr>())
-        return ClassifyDiagnostic(CA);
+  if (const auto *RD = VDT->getAsRecordDecl()) {
+    if (const auto *CA = RD->getAttr<CapabilityAttr>())
+      return ClassifyDiagnostic(CA);
   } else if (const auto *TT = VDT->getAs<TypedefType>()) {
     if (const auto *TD = TT->getDecl())
       if (const auto *CA = TD->getAttr<CapabilityAttr>())

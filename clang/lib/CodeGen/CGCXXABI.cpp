@@ -165,7 +165,7 @@ bool CGCXXABI::mayNeedDestruction(const VarDecl *VD) const {
   // If the variable has an incomplete class type (or array thereof), it
   // might need destruction.
   const Type *T = VD->getType()->getBaseElementTypeUnsafe();
-  if (T->getAs<RecordType>() && T->isIncompleteType())
+  if (T->getAsRecordDecl() && T->isIncompleteType())
     return true;
 
   return false;

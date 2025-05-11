@@ -639,15 +639,14 @@ ExprResult SemaObjC::BuildObjCBoxedExpr(SourceRange SR, Expr *ValueExpr) {
     // Look for the appropriate method within NSNumber.
     BoxingMethod = getNSNumberFactoryMethod(*this, Loc, ValueType);
     BoxedType = NSNumberPointer;
-  } else if (const EnumType *ET = ValueType->getAs<EnumType>()) {
-    if (!ET->getDecl()->isComplete()) {
+  } else if (const EnumDecl *ED = ValueType->getAsEnumDecl()) {
+    if (!ED->isComplete()) {
       Diag(Loc, diag::err_objc_incomplete_boxed_expression_type)
         << ValueType << ValueExpr->getSourceRange();
       return ExprError();
     }
 
-    BoxingMethod = getNSNumberFactoryMethod(*this, Loc,
-                                            ET->getDecl()->getIntegerType());
+    BoxingMethod = getNSNumberFactoryMethod(*this, Loc, ED->getIntegerType());
     BoxedType = NSNumberPointer;
   } else if (ValueType->isObjCBoxableRecordType()) {
     // Support for structure types, that marked as objc_boxable
@@ -3847,8 +3846,8 @@ static inline T *getObjCBridgeAttr(const TypedefType *TD) {
   QualType QT = TDNDecl->getUnderlyingType();
   if (QT->isPointerType()) {
     QT = QT->getPointeeType();
-    if (const RecordType *RT = QT->getAs<RecordType>()) {
-      for (auto *Redecl : RT->getDecl()->getMostRecentDecl()->redecls()) {
+    if (const RecordDecl *RD = QT->getAsRecordDecl()) {
+      for (auto *Redecl : RD->getMostRecentDecl()->redecls()) {
         if (auto *attr = Redecl->getAttr<T>())
           return attr;
       }

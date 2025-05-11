@@ -67,11 +67,11 @@ namespace CodeGen {
 // -1 value instead. These elements must be placed at the end of the layout
 // after all of the elements with specific offset.
 llvm::TargetExtType *HLSLBufferLayoutBuilder::createLayoutType(
-    const RecordType *RT, const llvm::SmallVector<int32_t> *PackOffsets) {
+    const CXXRecordDecl *RD, const llvm::SmallVector<int32_t> *PackOffsets) {
 
   // check if we already have the layout type for this struct
   if (llvm::TargetExtType *Ty =
-          CGM.getHLSLRuntime().getHLSLBufferLayoutType(RT))
+          CGM.getHLSLRuntime().getHLSLBufferLayoutType(RD))
     return Ty;
 
   SmallVector<unsigned> Layout;
@@ -85,23 +85,23 @@ llvm::TargetExtType *HLSLBufferLayoutBuilder::createLayoutType(
   Layout.push_back(0);
 
   // iterate over all fields of the record, including fields on base classes
-  llvm::SmallVector<const RecordType *> RecordTypes;
-  RecordTypes.push_back(RT);
-  while (RecordTypes.back()->getAsCXXRecordDecl()->getNumBases()) {
-    CXXRecordDecl *D = RecordTypes.back()->getAsCXXRecordDecl();
+  llvm::SmallVector<const CXXRecordDecl *> RecordDecls;
+  RecordDecls.push_back(RD);
+  while (RecordDecls.back()->getNumBases()) {
+    const CXXRecordDecl *D = RecordDecls.back();
     assert(D->getNumBases() == 1 &&
            "HLSL doesn't support multiple inheritance");
-    RecordTypes.push_back(D->bases_begin()->getType()->getAs<RecordType>());
+    RecordDecls.push_back(D->bases_begin()->getType()->getAsCXXRecordDecl());
   }
 
   unsigned FieldOffset;
   llvm::Type *FieldType;
 
-  while (!RecordTypes.empty()) {
-    const RecordType *RT = RecordTypes.back();
-    RecordTypes.pop_back();
+  while (!RecordDecls.empty()) {
+    const CXXRecordDecl *RD = RecordDecls.back();
+    RecordDecls.pop_back();
 
-    for (const auto *FD : RT->getDecl()->fields()) {
+    for (const auto *FD : RD->fields()) {
       assert((!PackOffsets || Index < PackOffsets->size()) &&
              "number of elements in layout struct does not match number of "
              "packoffset annotations");
@@ -147,9 +147,8 @@ llvm::TargetExtType *HLSLBufferLayoutBuilder::createLayoutType(
 
   // create the layout struct type; anonymous struct have empty name but
   // non-empty qualified name
-  const CXXRecordDecl *Decl = RT->getAsCXXRecordDecl();
   std::string Name =
-      Decl->getName().empty() ? "anon" : Decl->getQualifiedNameAsString();
+      RD->getName().empty() ? "anon" : RD->getQualifiedNameAsString();
   llvm::StructType *StructTy =
       llvm::StructType::create(LayoutElements, Name, true);
 
@@ -157,7 +156,7 @@ llvm::TargetExtType *HLSLBufferLayoutBuilder::createLayoutType(
   llvm::TargetExtType *NewLayoutTy = llvm::TargetExtType::get(
       CGM.getLLVMContext(), LayoutTypeName, {StructTy}, Layout);
   if (NewLayoutTy)
-    CGM.getHLSLRuntime().addHLSLBufferLayoutType(RT, NewLayoutTy);
+    CGM.getHLSLRuntime().addHLSLBufferLayoutType(RD, NewLayoutTy);
   return NewLayoutTy;
 }
 
@@ -203,7 +202,7 @@ bool HLSLBufferLayoutBuilder::layoutField(const FieldDecl *FD,
     // instead of the structure type.
     if (Ty->isStructureOrClassType()) {
       llvm::Type *NewTy =
-          cast<llvm::TargetExtType>(createLayoutType(Ty->getAs<RecordType>()));
+          cast<llvm::TargetExtType>(createLayoutType(Ty->getAsCXXRecordDecl()));
       if (!NewTy)
         return false;
       assert(isa<llvm::TargetExtType>(NewTy) && "expected target type");
@@ -221,8 +220,7 @@ bool HLSLBufferLayoutBuilder::layoutField(const FieldDecl *FD,
 
   } else if (FieldTy->isStructureOrClassType()) {
     // Create a layout type for the structure
-    ElemLayoutTy =
-        createLayoutType(cast<RecordType>(FieldTy->getAs<RecordType>()));
+    ElemLayoutTy = createLayoutType(FieldTy->getAsCXXRecordDecl());
     if (!ElemLayoutTy)
       return false;
     assert(isa<llvm::TargetExtType>(ElemLayoutTy) && "expected target type");

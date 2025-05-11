@@ -548,8 +548,8 @@ try_again:
     D = cast<TagType>(TP)->getDecl();
     break;
   case Type::TemplateSpecialization:
-    if (const RecordType *Record = TP->getAs<RecordType>())
-      D = Record->getDecl();
+    if (RecordDecl *Record = TP->getAsRecordDecl())
+      D = Record;
     else
       D = cast<TemplateSpecializationType>(TP)->getTemplateName()
                                                          .getAsTemplateDecl();
@@ -1038,12 +1038,10 @@ static long long visitRecordForValidation(const RecordDecl *RD) {
     if (FQT->isDependentType())
       return CXTypeLayoutError_Dependent;
     // recurse
-    if (const RecordType *ChildType = I->getType()->getAs<RecordType>()) {
-      if (const RecordDecl *Child = ChildType->getDecl()) {
-        long long ret = visitRecordForValidation(Child);
-        if (ret < 0)
-          return ret;
-      }
+    if (const RecordDecl *Child = I->getType()->getAsRecordDecl()) {
+      long long ret = visitRecordForValidation(Child);
+      if (ret < 0)
+        return ret;
     }
     // else try next field
   }

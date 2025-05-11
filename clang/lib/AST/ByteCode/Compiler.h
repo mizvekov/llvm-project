@@ -240,8 +240,8 @@ protected:
   /// Emits scope cleanup instructions.
   void emitCleanup();
 
-  /// Returns a record type from a record or pointer type.
-  const RecordType *getRecordTy(QualType Ty);
+  /// Returns a record decl from a record or pointer type.
+  RecordDecl *getRecordDecl(QualType Ty);
 
   /// Returns a record from a record or pointer type.
   Record *getRecord(QualType Ty);

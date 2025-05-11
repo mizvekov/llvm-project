@@ -177,7 +177,7 @@ public:
     asImpl().writeUInt32(path.size());
     auto &ctx = ((BasicWriterBase<Impl> *)this)->getASTContext();
     for (auto elem : path) {
-      if (elemTy->getAs<RecordType>()) {
+      if (elemTy->getAsRecordDecl()) {
         asImpl().writeUInt32(elem.getAsBaseOrMember().getInt());
         const Decl *baseOrMember = elem.getAsBaseOrMember().getPointer();
         if (const auto *recordDecl = dyn_cast<CXXRecordDecl>(baseOrMember)) {

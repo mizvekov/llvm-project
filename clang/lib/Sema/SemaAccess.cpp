@@ -319,10 +319,10 @@ static AccessResult IsDerivedFromInclusive(const CXXRecordDecl *Derived,
       const CXXRecordDecl *RD;
 
       QualType T = I.getType();
-      if (const RecordType *RT = T->getAs<RecordType>()) {
-        RD = cast<CXXRecordDecl>(RT->getDecl());
-      } else if (const InjectedClassNameType *IT
-                   = T->getAs<InjectedClassNameType>()) {
+      if (CXXRecordDecl *Rec = T->getAsCXXRecordDecl()) {
+        RD = Rec;
+      } else if (const InjectedClassNameType *IT =
+                     T->getAs<InjectedClassNameType>()) {
         RD = IT->getDecl();
       } else {
         assert(T->isDependentType() && "non-dependent base wasn't a record?");
@@ -443,8 +443,8 @@ static AccessResult MatchesFriend(Sema &S,
 static AccessResult MatchesFriend(Sema &S,
                                   const EffectiveContext &EC,
                                   CanQualType Friend) {
-  if (const RecordType *RT = Friend->getAs<RecordType>())
-    return MatchesFriend(S, EC, cast<CXXRecordDecl>(RT->getDecl()));
+  if (CXXRecordDecl *RD = Friend->getAsCXXRecordDecl())
+    return MatchesFriend(S, EC, RD);
 
   // TODO: we can do better than this
   if (Friend->isDependentType())
@@ -672,10 +672,10 @@ struct ProtectedFriendContext {
       const CXXRecordDecl *RD;
 
       QualType T = I.getType();
-      if (const RecordType *RT = T->getAs<RecordType>()) {
-        RD = cast<CXXRecordDecl>(RT->getDecl());
-      } else if (const InjectedClassNameType *IT
-                   = T->getAs<InjectedClassNameType>()) {
+      if (CXXRecordDecl *Rec = T->getAsCXXRecordDecl()) {
+        RD = Rec;
+      } else if (const InjectedClassNameType *IT =
+                     T->getAs<InjectedClassNameType>()) {
         RD = IT->getDecl();
       } else {
         assert(T->isDependentType() && "non-dependent base wasn't a record?");
@@ -1789,8 +1789,8 @@ Sema::AccessResult Sema::CheckMemberOperatorAccess(SourceLocation OpLoc,
   if (!getLangOpts().AccessControl || Found.getAccess() == AS_public)
     return AR_accessible;
 
-  const RecordType *RT = ObjectExpr->getType()->castAs<RecordType>();
-  CXXRecordDecl *NamingClass = cast<CXXRecordDecl>(RT->getDecl());
+  CXXRecordDecl *NamingClass = ObjectExpr->getType()->getAsCXXRecordDecl();
+  assert(NamingClass);
 
   AccessTarget Entity(Context, AccessTarget::Member, NamingClass, Found,
                       ObjectExpr->getType());

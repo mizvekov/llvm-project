@@ -193,9 +193,8 @@ static unsigned calculateLegacyCbufferFieldAlign(const ASTContext &Context,
 static unsigned calculateLegacyCbufferSize(const ASTContext &Context,
                                            QualType T) {
   constexpr unsigned CBufferAlign = 16;
-  if (const RecordType *RT = T->getAs<RecordType>()) {
+  if (const RecordDecl *RD = T->getAsRecordDecl()) {
     unsigned Size = 0;
-    const RecordDecl *RD = RT->getDecl();
     for (const FieldDecl *Field : RD->fields()) {
       QualType Ty = Field->getType();
       unsigned FieldSize = calculateLegacyCbufferSize(Context, Ty);
@@ -1368,8 +1367,7 @@ SemaHLSL::TakeLocForHLSLAttribute(const HLSLAttributedResourceType *RT) {
 // Walks though the global variable declaration, collects all resource binding
 // requirements and adds them to Bindings
 void SemaHLSL::collectResourceBindingsOnUserRecordDecl(const VarDecl *VD,
-                                                       const RecordType *RT) {
-  const RecordDecl *RD = RT->getDecl();
+                                                       const RecordDecl *RD) {
   for (FieldDecl *FD : RD->fields()) {
     const Type *Ty = FD->getType()->getUnqualifiedDesugaredType();
 
@@ -1392,13 +1390,13 @@ void SemaHLSL::collectResourceBindingsOnUserRecordDecl(const VarDecl *VD,
       DeclBindingInfo *DBI = Bindings.getDeclBindingInfo(VD, RC);
       if (!DBI)
         Bindings.addDeclBindingInfo(VD, RC);
-    } else if (const RecordType *RT = dyn_cast<RecordType>(Ty)) {
+    } else if (const RecordDecl *FieldRD = Ty->getAsRecordDecl()) {
       // Recursively scan embedded struct or class; it would be nice to do this
       // without recursion, but tricky to correctly calculate the size of the
       // binding, which is something we are probably going to need to do later
       // on. Hopefully nesting of structs in structs too many levels is
       // unlikely.
-      collectResourceBindingsOnUserRecordDecl(VD, RT);
+      collectResourceBindingsOnUserRecordDecl(VD, FieldRD);
     }
   }
 }
@@ -2793,10 +2791,7 @@ static void BuildFlattenedTypeList(QualType BaseTy,
       List.insert(List.end(), VT->getNumElements(), VT->getElementType());
       continue;
     }
-    if (const auto *RT = dyn_cast<RecordType>(T)) {
-      const CXXRecordDecl *RD = RT->getAsCXXRecordDecl();
-      assert(RD && "HLSL record types should all be CXXRecordDecls!");
-
+    if (const auto *RD = T->getAsCXXRecordDecl()) {
       if (RD->isStandardLayout())
         RD = RD->getStandardLayoutBaseWithFields();
 
@@ -3001,8 +2996,7 @@ bool SemaHLSL::ContainsBitField(QualType BaseTy) {
       WorkList.push_back(AT->getElementType());
       continue;
     }
-    if (const auto *RT = dyn_cast<RecordType>(T)) {
-      const RecordDecl *RD = RT->getDecl();
+    if (const auto *RD = T->getAsRecordDecl()) {
       if (RD->isUnion())
         continue;
 
@@ -3343,8 +3337,8 @@ void SemaHLSL::collectResourceBindingsOnVarDecl(VarDecl *VD) {
   }
 
   // User defined record type
-  if (const RecordType *RT = dyn_cast<RecordType>(Ty))
-    collectResourceBindingsOnUserRecordDecl(VD, RT);
+  if (const RecordDecl *RD = Ty->getAsRecordDecl())
+    collectResourceBindingsOnUserRecordDecl(VD, RD);
 }
 
 // Walks though the explicit resource binding attributes on the declaration,
@@ -3474,18 +3468,19 @@ class InitListTransformer {
       return true;
     }
 
-    if (auto *RTy = Ty->getAs<RecordType>()) {
-      llvm::SmallVector<const RecordType *> RecordTypes;
-      RecordTypes.push_back(RTy);
-      while (RecordTypes.back()->getAsCXXRecordDecl()->getNumBases()) {
-        CXXRecordDecl *D = RecordTypes.back()->getAsCXXRecordDecl();
+    if (auto *RD = Ty->getAsCXXRecordDecl()) {
+      llvm::SmallVector<CXXRecordDecl *> RecordDecls;
+      RecordDecls.push_back(RD);
+      while (RecordDecls.back()->getNumBases()) {
+        CXXRecordDecl *D = RecordDecls.back();
         assert(D->getNumBases() == 1 &&
                "HLSL doesn't support multiple inheritance");
-        RecordTypes.push_back(D->bases_begin()->getType()->getAs<RecordType>());
+        RecordDecls.push_back(
+            D->bases_begin()->getType()->getAsCXXRecordDecl());
       }
-      while (!RecordTypes.empty()) {
-        const RecordType *RT = RecordTypes.pop_back_val();
-        for (auto *FD : RT->getDecl()->fields()) {
+      while (!RecordDecls.empty()) {
+        CXXRecordDecl *RD = RecordDecls.pop_back_val();
+        for (auto *FD : RD->fields()) {
           DeclAccessPair Found = DeclAccessPair::make(FD, FD->getAccess());
           DeclarationNameInfo NameInfo(FD->getDeclName(), E->getBeginLoc());
           ExprResult Res = S.BuildFieldReferenceExpr(
@@ -3522,18 +3517,19 @@ class InitListTransformer {
       for (uint64_t I = 0; I < Size; ++I)
         Inits.push_back(generateInitListsImpl(ElTy));
     }
-    if (auto *RTy = Ty->getAs<RecordType>()) {
-      llvm::SmallVector<const RecordType *> RecordTypes;
-      RecordTypes.push_back(RTy);
-      while (RecordTypes.back()->getAsCXXRecordDecl()->getNumBases()) {
-        CXXRecordDecl *D = RecordTypes.back()->getAsCXXRecordDecl();
+    if (auto *RD = Ty->getAsCXXRecordDecl()) {
+      llvm::SmallVector<CXXRecordDecl *> RecordDecls;
+      RecordDecls.push_back(RD);
+      while (RecordDecls.back()->getNumBases()) {
+        CXXRecordDecl *D = RecordDecls.back();
         assert(D->getNumBases() == 1 &&
                "HLSL doesn't support multiple inheritance");
-        RecordTypes.push_back(D->bases_begin()->getType()->getAs<RecordType>());
+        RecordDecls.push_back(
+            D->bases_begin()->getType()->getAsCXXRecordDecl());
       }
-      while (!RecordTypes.empty()) {
-        const RecordType *RT = RecordTypes.pop_back_val();
-        for (auto *FD : RT->getDecl()->fields()) {
+      while (!RecordDecls.empty()) {
+        CXXRecordDecl *RD = RecordDecls.pop_back_val();
+        for (auto *FD : RD->fields()) {
           Inits.push_back(generateInitListsImpl(FD->getType()));
         }
       }

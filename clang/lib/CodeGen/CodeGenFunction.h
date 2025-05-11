@@ -3001,10 +3001,8 @@ public:
   /// hasVolatileMember - returns true if aggregate type has a volatile
   /// member.
   bool hasVolatileMember(QualType T) {
-    if (const RecordType *RT = T->getAs<RecordType>()) {
-      const RecordDecl *RD = cast<RecordDecl>(RT->getDecl());
+    if (const RecordDecl *RD = T->getAsRecordDecl())
       return RD->hasVolatileMember();
-    }
     return false;
   }
 

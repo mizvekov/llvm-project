@@ -2742,8 +2742,8 @@ bool Sema::LookupInSuper(LookupResult &R, CXXRecordDecl *Class) {
   // members of Class itself.  That is, the naming class is Class, and the
   // access includes the access of the base.
   for (const auto &BaseSpec : Class->bases()) {
-    CXXRecordDecl *RD = cast<CXXRecordDecl>(
-        BaseSpec.getType()->castAs<RecordType>()->getDecl());
+    CXXRecordDecl *RD = BaseSpec.getType()->getAsCXXRecordDecl();
+    assert(RD);
     LookupResult Result(*this, R.getLookupNameInfo(), R.getLookupKind());
     Result.setBaseObjectType(Context.getRecordType(Class));
     LookupQualifiedName(Result, RD);
@@ -3084,16 +3084,15 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
 
     // Visit the base classes.
     for (const auto &Base : Class->bases()) {
-      const RecordType *BaseType = Base.getType()->getAs<RecordType>();
+      CXXRecordDecl *BaseDecl = Base.getType()->getAsCXXRecordDecl();
       // In dependent contexts, we do ADL twice, and the first time around,
       // the base type might be a dependent TemplateSpecializationType, or a
       // TemplateTypeParmType. If that happens, simply ignore it.
       // FIXME: If we want to support export, we probably need to add the
       // namespace of the template in a TemplateSpecializationType, or even
       // the classes and namespaces of known non-dependent arguments.
-      if (!BaseType)
+      if (!BaseDecl)
         continue;
-      CXXRecordDecl *BaseDecl = cast<CXXRecordDecl>(BaseType->getDecl());
       if (Result.addClassTransitive(BaseDecl)) {
         // Find the associated namespace for this base class.
         DeclContext *BaseCtx = BaseDecl->getDeclContext();
@@ -4222,10 +4221,10 @@ private:
             continue;
           RD = TD->getTemplatedDecl();
         } else {
-          const auto *Record = BaseType->getAs<RecordType>();
+          auto *Record = BaseType->getAsRecordDecl();
           if (!Record)
             continue;
-          RD = Record->getDecl();
+          RD = Record;
         }
 
         // FIXME: It would be nice to be able to determine whether referencing

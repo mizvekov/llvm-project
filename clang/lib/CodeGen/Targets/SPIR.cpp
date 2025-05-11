@@ -113,8 +113,7 @@ ABIArgInfo SPIRVABIInfo::classifyReturnType(QualType RetTy) const {
   if (!isAggregateTypeForABI(RetTy) || getRecordArgABI(RetTy, getCXXABI()))
     return DefaultABIInfo::classifyReturnType(RetTy);
 
-  if (const RecordType *RT = RetTy->getAs<RecordType>()) {
-    const RecordDecl *RD = RT->getDecl();
+  if (const RecordDecl *RD = RetTy->getAsRecordDecl()) {
     if (RD->hasFlexibleArrayMember())
       return DefaultABIInfo::classifyReturnType(RetTy);
   }
@@ -181,8 +180,7 @@ ABIArgInfo SPIRVABIInfo::classifyArgumentType(QualType Ty) const {
     return getNaturalAlignIndirect(Ty, getDataLayout().getAllocaAddrSpace(),
                                    RAA == CGCXXABI::RAA_DirectInMemory);
 
-  if (const RecordType *RT = Ty->getAs<RecordType>()) {
-    const RecordDecl *RD = RT->getDecl();
+  if (const RecordDecl *RD = Ty->getAsRecordDecl()) {
     if (RD->hasFlexibleArrayMember())
       return DefaultABIInfo::classifyArgumentType(Ty);
   }

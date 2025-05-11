@@ -161,7 +161,7 @@ bool Sema::CheckSpecifiedExceptionType(QualType &T, SourceRange Range) {
     ReturnValueOnError = false;
   }
   if (!(PointeeT->isRecordType() &&
-        PointeeT->castAs<RecordType>()->isBeingDefined()) &&
+        PointeeT->getAsRecordDecl()->isBeingDefined()) &&
       RequireCompleteType(Range.getBegin(), PointeeT, DiagID, Kind, Range))
     return ReturnValueOnError;
 

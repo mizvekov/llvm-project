@@ -2794,10 +2794,9 @@ TemplateParameterList *Sema::MatchTemplateParametersToScopeSpecifier(
     }
 
     // Retrieve the parent of an enumeration type.
-    if (const EnumType *EnumT = T->getAs<EnumType>()) {
+    if (EnumDecl *Enum = T->getAsEnumDecl()) {
       // FIXME: Forward-declared enums require a TSK_ExplicitSpecialization
       // check here.
-      EnumDecl *Enum = EnumT->getDecl();
 
       // Get to the parent type.
       if (TypeDecl *Parent = dyn_cast<TypeDecl>(Enum->getParent()))
@@ -3683,8 +3682,8 @@ QualType Sema::CheckTemplateIdType(TemplateName Name,
     (void)DiagnoseUseOfDecl(Decl, TemplateLoc);
 
     CanonType = Context.getTypeDeclType(Decl);
-    assert(isa<RecordType>(CanonType) &&
-           "type of non-dependent specialization is not a RecordType");
+    assert(CanonType->getAsRecordDecl() &&
+           "type of non-dependent specialization is not a Record");
   } else {
     llvm_unreachable("Unhandled template kind");
   }
@@ -3919,9 +3918,7 @@ TypeResult Sema::ActOnTagTemplateIdType(TagUseKind TUK,
     return TypeResult(true);
 
   // Check the tag kind
-  if (const RecordType *RT = Result->getAs<RecordType>()) {
-    RecordDecl *D = RT->getDecl();
-
+  if (RecordDecl *D = Result->getAsRecordDecl()) {
     IdentifierInfo *Id = D->getIdentifier();
     assert(Id && "templated class must have an identifier");
 
@@ -7147,8 +7144,8 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
       // always a no-op, except when the parameter type is bool. In
       // that case, this may extend the argument from 1 bit to 8 bits.
       QualType IntegerType = ParamType;
-      if (const EnumType *Enum = IntegerType->getAs<EnumType>())
-        IntegerType = Enum->getDecl()->getIntegerType();
+      if (const EnumDecl *Enum = IntegerType->getAsEnumDecl())
+        IntegerType = Enum->getIntegerType();
       Value = Value.extOrTrunc(IntegerType->isBitIntType()
                                    ? Context.getIntWidth(IntegerType)
                                    : Context.getTypeSize(IntegerType));
@@ -7245,8 +7242,8 @@ ExprResult Sema::CheckTemplateArgument(NonTypeTemplateParmDecl *Param,
     }
 
     QualType IntegerType = ParamType;
-    if (const EnumType *Enum = IntegerType->getAs<EnumType>()) {
-      IntegerType = Enum->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = IntegerType->getAsEnumDecl()) {
+      IntegerType = Enum->getIntegerType();
     }
 
     if (ParamType->isBooleanType()) {
@@ -7703,8 +7700,8 @@ static Expr *BuildExpressionFromIntegralTemplateArgumentValue(
   // any integral type with C++11 enum classes, make sure we create the right
   // type of literal for it.
   QualType T = OrigT;
-  if (const EnumType *ET = OrigT->getAs<EnumType>())
-    T = ET->getDecl()->getIntegerType();
+  if (const EnumDecl *ED = OrigT->getAsEnumDecl())
+    T = ED->getIntegerType();
 
   Expr *E;
   if (T->isAnyCharacterType()) {

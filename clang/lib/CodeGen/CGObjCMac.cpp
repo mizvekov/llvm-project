@@ -955,7 +955,7 @@ protected:
   void UpdateRunSkipBlockVars(bool IsByref, Qualifiers::ObjCLifetime LifeTime,
                               CharUnits FieldOffset, CharUnits FieldSize);
 
-  void BuildRCBlockVarRecordLayout(const RecordType *RT, CharUnits BytePos,
+  void BuildRCBlockVarRecordLayout(const RecordDecl *RD, CharUnits BytePos,
                                    bool &HasUnion, bool ByrefLayout = false);
 
   void BuildRCRecordLayout(const llvm::StructLayout *RecLayout,
@@ -2220,7 +2220,7 @@ public:
       : CGM(CGM), InstanceBegin(instanceBegin), InstanceEnd(instanceEnd),
         ForStrongLayout(forStrongLayout) {}
 
-  void visitRecord(const RecordType *RT, CharUnits offset);
+  void visitRecord(const RecordDecl *RD, CharUnits offset);
 
   template <class Iterator, class GetOffsetFn>
   void visitAggregate(Iterator begin, Iterator end, CharUnits aggrOffset,
@@ -2313,7 +2313,7 @@ void IvarLayoutBuilder::visitBlock(const CGBlockInfo &blockInfo) {
     }
 
     assert(!type->isArrayType() && "array variable should not be caught");
-    if (const RecordType *record = type->getAs<RecordType>()) {
+    if (const RecordDecl *record = type->getAsRecordDecl()) {
       visitRecord(record, fieldOffset);
       continue;
     }
@@ -2407,8 +2407,8 @@ void CGObjCCommonMac::BuildRCRecordLayout(const llvm::StructLayout *RecLayout,
       if (FQT->isUnionType())
         HasUnion = true;
 
-      BuildRCBlockVarRecordLayout(FQT->castAs<RecordType>(),
-                                  BytePos + FieldOffset, HasUnion);
+      BuildRCBlockVarRecordLayout(FQT->getAsRecordDecl(), BytePos + FieldOffset,
+                                  HasUnion);
       continue;
     }
 
@@ -2424,15 +2424,17 @@ void CGObjCCommonMac::BuildRCRecordLayout(const llvm::StructLayout *RecLayout,
       }
       if (FQT->isRecordType() && ElCount) {
         int OldIndex = RunSkipBlockVars.size() - 1;
-        auto *RT = FQT->castAs<RecordType>();
-        BuildRCBlockVarRecordLayout(RT, BytePos + FieldOffset, HasUnion);
+        auto *RD = FQT->getAsRecordDecl();
+        assert(RD);
+        BuildRCBlockVarRecordLayout(RD, BytePos + FieldOffset, HasUnion);
 
         // Replicate layout information for each array element. Note that
         // one element is already done.
         uint64_t ElIx = 1;
         for (int FirstIndex = RunSkipBlockVars.size() - 1; ElIx < ElCount;
              ElIx++) {
-          CharUnits Size = CGM.getContext().getTypeSizeInChars(RT);
+          CharUnits Size = CGM.getContext().getTypeSizeInChars(
+              CGM.getContext().getRecordType(RD));
           for (int i = OldIndex + 1; i <= FirstIndex; ++i)
             RunSkipBlockVars.push_back(
                 RUN_SKIP(RunSkipBlockVars[i].opcode,
@@ -2489,13 +2491,12 @@ void CGObjCCommonMac::BuildRCRecordLayout(const llvm::StructLayout *RecLayout,
         BytePos + MaxFieldOffset, MaxUnionSize);
 }
 
-void CGObjCCommonMac::BuildRCBlockVarRecordLayout(const RecordType *RT,
+void CGObjCCommonMac::BuildRCBlockVarRecordLayout(const RecordDecl *RD,
                                                   CharUnits BytePos,
                                                   bool &HasUnion,
                                                   bool ByrefLayout) {
-  const RecordDecl *RD = RT->getDecl();
   SmallVector<const FieldDecl *, 16> Fields(RD->fields());
-  llvm::Type *Ty = CGM.getTypes().ConvertType(QualType(RT, 0));
+  llvm::Type *Ty = CGM.getTypes().ConvertType(CGM.getContext().getRecordType(RD));
   const llvm::StructLayout *RecLayout =
       CGM.getDataLayout().getStructLayout(cast<llvm::StructType>(Ty));
 
@@ -2829,7 +2830,7 @@ void CGObjCCommonMac::fillRunSkipBlockVars(CodeGenModule &CGM,
 
     assert(!type->isArrayType() && "array variable should not be caught");
     if (!CI.isByRef())
-      if (const RecordType *record = type->getAs<RecordType>()) {
+      if (const RecordDecl *record = type->getAsRecordDecl()) {
         BuildRCBlockVarRecordLayout(record, fieldOffset, hasUnion);
         continue;
       }
@@ -2863,7 +2864,7 @@ llvm::Constant *CGObjCCommonMac::BuildByrefLayout(CodeGen::CodeGenModule &CGM,
   CharUnits fieldOffset;
   RunSkipBlockVars.clear();
   bool hasUnion = false;
-  if (const RecordType *record = T->getAs<RecordType>()) {
+  if (const RecordDecl *record = T->getAsRecordDecl()) {
     BuildRCBlockVarRecordLayout(record, fieldOffset, hasUnion,
                                 true /*ByrefLayout */);
     llvm::Constant *Result = getBitmapBlockLayout(true);
@@ -3351,8 +3352,8 @@ static bool hasWeakMember(QualType type) {
     return true;
   }
 
-  if (auto recType = type->getAs<RecordType>()) {
-    for (auto *field : recType->getDecl()->fields()) {
+  if (auto *RD = type->getAsRecordDecl()) {
+    for (auto *field : RD->fields()) {
       if (hasWeakMember(field->getType()))
         return true;
     }
@@ -5177,9 +5178,7 @@ CGObjCCommonMac::GetIvarLayoutName(IdentifierInfo *Ident,
   return llvm::Constant::getNullValue(ObjCTypes.Int8PtrTy);
 }
 
-void IvarLayoutBuilder::visitRecord(const RecordType *RT, CharUnits offset) {
-  const RecordDecl *RD = RT->getDecl();
-
+void IvarLayoutBuilder::visitRecord(const RecordDecl *RD, CharUnits offset) {
   // If this is a union, remember that we had one, because it might mess
   // up the ordering of layout entries.
   if (RD->isUnion())
@@ -5240,15 +5239,16 @@ void IvarLayoutBuilder::visitField(const FieldDecl *field,
     return;
 
   // Recurse if the base element type is a record type.
-  if (auto recType = fieldType->getAs<RecordType>()) {
+  if (auto *RD = fieldType->getAsRecordDecl()) {
     size_t oldEnd = IvarsInfo.size();
 
-    visitRecord(recType, fieldOffset);
+    visitRecord(RD, fieldOffset);
 
     // If we have an array, replicate the first entry's layout information.
     auto numEltEntries = IvarsInfo.size() - oldEnd;
     if (numElts != 1 && numEltEntries != 0) {
-      CharUnits eltSize = CGM.getContext().getTypeSizeInChars(recType);
+      CharUnits eltSize =
+          CGM.getContext().getTypeSizeInChars(CGM.getContext().getRecordType(RD));
       for (uint64_t eltIndex = 1; eltIndex != numElts; ++eltIndex) {
         // Copy the last numEltEntries onto the end of the array, adjusting
         // each for the element size.

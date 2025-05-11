@@ -2116,10 +2116,10 @@ QualType Sema::BuildArrayType(QualType T, ArraySizeModifier ASM,
     return QualType();
   }
 
-  if (const RecordType *EltTy = T->getAs<RecordType>()) {
+  if (const RecordDecl *Elt = T->getAsRecordDecl()) {
     // If the element type is a struct or union that contains a variadic
     // array, accept it as a GNU extension: C99 6.7.2.1p2.
-    if (EltTy->getDecl()->hasFlexibleArrayMember())
+    if (Elt->hasFlexibleArrayMember())
       Diag(Loc, diag::ext_flexible_array_in_array) << T;
   } else if (T->isObjCObjectType()) {
     Diag(Loc, diag::err_objc_array_of_interfaces) << T;
@@ -3969,9 +3969,7 @@ classifyPointerDeclarator(Sema &S, QualType type, Declarator &declarator,
     if (numNormalPointers == 0)
       return PointerDeclaratorKind::NonPointer;
 
-    if (auto recordType = type->getAs<RecordType>()) {
-      RecordDecl *recordDecl = recordType->getDecl();
-
+    if (auto recordDecl = type->getAsRecordDecl()) {
       // If this is CFErrorRef*, report it as such.
       if (numNormalPointers == 2 && numTypeSpecifierPointers < 2 &&
           S.ObjC().isCFError(recordDecl)) {
@@ -4253,13 +4251,14 @@ static bool DiagnoseMultipleAddrSpaceAttributes(Sema &S, LangAS ASOld,
 // These types are affected by `#pragma assume_nonnull`, and missing nullability
 // will be diagnosed with -Wnullability-completeness.
 static bool shouldHaveNullability(QualType T) {
-  return T->canHaveNullability(/*ResultIfUnknown=*/false) &&
-         // For now, do not infer/require nullability on C++ smart pointers.
-         // It's unclear whether the pragma's behavior is useful for C++.
-         // e.g. treating type-aliases and template-type-parameters differently
-         // from types of declarations can be surprising.
-         !isa<RecordType, TemplateSpecializationType>(
-             T->getCanonicalTypeInternal());
+  // For now, do not infer/require nullability on C++ smart pointers.
+  // It's unclear whether the pragma's behavior is useful for C++.
+  // e.g. treating type-aliases and template-type-parameters differently
+  // from types of declarations can be surprising.
+  if (QualType CanT = T->getCanonicalTypeInternal();
+      isa<TemplateSpecializationType>(CanT) || CanT->getAsRecordDecl())
+    return false;
+  return T->canHaveNullability(/*ResultIfUnknown=*/false);
 }
 
 static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
@@ -9516,11 +9515,9 @@ bool Sema::RequireLiteralType(SourceLocation Loc, QualType T,
   if (T->isVariableArrayType())
     return true;
 
-  const RecordType *RT = ElemType->getAs<RecordType>();
-  if (!RT)
+  const auto *RD = ElemType->getAsCXXRecordDecl();
+  if (!RD)
     return true;
-
-  const CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
 
   // A partially-defined class type can't be a literal type, because a literal
   // class type must have a trivial destructor (which can't be checked until
@@ -9782,9 +9779,8 @@ QualType Sema::BuildPackIndexingType(QualType Pattern, Expr *IndexExpr,
 
 static QualType GetEnumUnderlyingType(Sema &S, QualType BaseType,
                                       SourceLocation Loc) {
-  assert(BaseType->isEnumeralType());
-  EnumDecl *ED = BaseType->castAs<EnumType>()->getDecl();
-  assert(ED && "EnumType has no EnumDecl");
+  EnumDecl *ED = BaseType->getAsEnumDecl();
+  assert(ED && "Type is not Enum");
 
   S.DiagnoseUseOfDecl(ED, Loc);
 

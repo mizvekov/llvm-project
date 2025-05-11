@@ -267,14 +267,14 @@ void CGHLSLRuntime::addBuffer(const HLSLBufferDecl *BufDecl) {
 }
 
 llvm::TargetExtType *
-CGHLSLRuntime::getHLSLBufferLayoutType(const RecordType *StructType) {
+CGHLSLRuntime::getHLSLBufferLayoutType(const RecordDecl *StructType) {
   const auto Entry = LayoutTypes.find(StructType);
   if (Entry != LayoutTypes.end())
     return Entry->getSecond();
   return nullptr;
 }
 
-void CGHLSLRuntime::addHLSLBufferLayoutType(const RecordType *StructType,
+void CGHLSLRuntime::addHLSLBufferLayoutType(const RecordDecl *StructType,
                                             llvm::TargetExtType *LayoutTy) {
   assert(getHLSLBufferLayoutType(StructType) == nullptr &&
          "layout type for this struct already exist");

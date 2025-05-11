@@ -47,8 +47,8 @@ public:
       }
     }
 
-    if (const EnumType *EnumTy = Ty->getAs<EnumType>())
-      Ty = EnumTy->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = Ty->getAsEnumDecl())
+      Ty = Enum->getIntegerType();
 
     ASTContext &Context = getContext();
     if (const auto *EIT = Ty->getAs<BitIntType>())
@@ -69,8 +69,8 @@ public:
                                      getDataLayout().getAllocaAddrSpace());
 
     // Treat an enum type as its underlying type.
-    if (const EnumType *EnumTy = RetTy->getAs<EnumType>())
-      RetTy = EnumTy->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = RetTy->getAsEnumDecl())
+      RetTy = Enum->getIntegerType();
 
     ASTContext &Context = getContext();
     if (const auto *EIT = RetTy->getAs<BitIntType>())

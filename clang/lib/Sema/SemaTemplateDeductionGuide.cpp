@@ -980,12 +980,11 @@ getRHSTemplateDeclAndArgs(Sema &SemaRef, TypeAliasTemplateDecl *AliasTemplate) {
     //   using AliasFoo1 = Foo<T>; // a class/type alias template specialization
     Template = TST->getTemplateName().getAsTemplateDecl();
     AliasRhsTemplateArgs = TST->template_arguments();
-  } else if (const auto *RT = RhsType->getAs<RecordType>()) {
+  } else if (const auto *RD = RhsType->getAsCXXRecordDecl()) {
     // Cases where template arguments in the RHS of the alias are not
     // dependent. e.g.
     //   using AliasFoo = Foo<bool>;
-    if (const auto *CTSD = llvm::dyn_cast<ClassTemplateSpecializationDecl>(
-            RT->getAsCXXRecordDecl())) {
+    if (const auto *CTSD = dyn_cast<ClassTemplateSpecializationDecl>(RD)) {
       Template = CTSD->getSpecializedTemplate();
       AliasRhsTemplateArgs = CTSD->getTemplateArgs().asArray();
     }

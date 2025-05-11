@@ -74,9 +74,7 @@ const CXXRecordDecl *Expr::getBestDynamicClassType() const {
   if (DerivedType->isDependentType())
     return nullptr;
 
-  const RecordType *Ty = DerivedType->castAs<RecordType>();
-  Decl *D = Ty->getDecl();
-  return cast<CXXRecordDecl>(D);
+  return DerivedType->getAsCXXRecordDecl();
 }
 
 const Expr *Expr::skipRValueSubobjectAdjustments(
@@ -91,8 +89,8 @@ const Expr *Expr::skipRValueSubobjectAdjustments(
            CE->getCastKind() == CK_UncheckedDerivedToBase) &&
           E->getType()->isRecordType()) {
         E = CE->getSubExpr();
-        const auto *Derived =
-            cast<CXXRecordDecl>(E->getType()->castAs<RecordType>()->getDecl());
+        const auto *Derived = E->getType()->getAsCXXRecordDecl();
+        assert(Derived);
         Adjustments.push_back(SubobjectAdjustment(CE, Derived));
         continue;
       }
@@ -263,7 +261,7 @@ namespace {
 }
 
 QualType Expr::getEnumCoercedType(const ASTContext &Ctx) const {
-  if (isa<EnumType>(getType()))
+  if (getType()->getAsEnumDecl())
     return getType();
   if (const auto *ECD = getEnumConstantDecl()) {
     const auto *ED = cast<EnumDecl>(ECD->getDeclContext());
@@ -2056,8 +2054,7 @@ CXXBaseSpecifier **CastExpr::path_buffer() {
 
 const FieldDecl *CastExpr::getTargetFieldForToUnionCast(QualType unionType,
                                                         QualType opType) {
-  auto RD = unionType->castAs<RecordType>()->getDecl();
-  return getTargetFieldForToUnionCast(RD, opType);
+  return getTargetFieldForToUnionCast(unionType->getAsRecordDecl(), opType);
 }
 
 const FieldDecl *CastExpr::getTargetFieldForToUnionCast(const RecordDecl *RD,
@@ -3429,7 +3426,7 @@ bool Expr::isConstantInitializer(ASTContext &Ctx, bool IsForRef,
 
     if (ILE->getType()->isRecordType()) {
       unsigned ElementNo = 0;
-      RecordDecl *RD = ILE->getType()->castAs<RecordType>()->getDecl();
+      RecordDecl *RD = ILE->getType()->getAsRecordDecl();
 
       // In C++17, bases were added to the list of members used by aggregate
       // initialization.
@@ -4072,9 +4069,8 @@ Expr::isNullPointerConstant(ASTContext &Ctx,
   if (getType()->isNullPtrType())
     return NPCK_CXX11_nullptr;
 
-  if (const RecordType *UT = getType()->getAsUnionType())
-    if (!Ctx.getLangOpts().CPlusPlus11 &&
-        UT && UT->getDecl()->hasAttr<TransparentUnionAttr>())
+  if (const RecordDecl *UD = getType()->getAsUnionDecl())
+    if (!Ctx.getLangOpts().CPlusPlus11 && UD->hasAttr<TransparentUnionAttr>())
       if (const CompoundLiteralExpr *CLE = dyn_cast<CompoundLiteralExpr>(this)){
         const Expr *InitExpr = CLE->getInitializer();
         if (const InitListExpr *ILE = dyn_cast<InitListExpr>(InitExpr))

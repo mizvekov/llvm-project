@@ -1939,8 +1939,7 @@ Error ASTNodeImporter::ImportDeclParts(
     for (const ParmVarDecl *P : FunDecl->parameters()) {
       const Type *LeafT =
           getLeafPointeeType(P->getType().getCanonicalType().getTypePtr());
-      auto *RT = dyn_cast<RecordType>(LeafT);
-      if (RT && RT->getDecl() == D) {
+      if (LeafT->getAsRecordDecl() == D) {
         Importer.FromDiag(D->getLocation(), diag::err_unsupported_ast_node)
             << D->getDeclKindName();
         return make_error<ASTImportError>(ASTImportError::UnsupportedConstruct);
@@ -2189,12 +2188,12 @@ Error ASTNodeImporter::ImportFieldDeclDefinition(const FieldDecl *From,
   }
 
   if (!FromRecordDecl || !ToRecordDecl) {
-    const RecordType *RecordFrom = FromType->getAs<RecordType>();
-    const RecordType *RecordTo = ToType->getAs<RecordType>();
+    RecordDecl *RecordFrom = FromType->getAsRecordDecl();
+    RecordDecl *RecordTo = ToType->getAsRecordDecl();
 
     if (RecordFrom && RecordTo) {
-      FromRecordDecl = RecordFrom->getDecl();
-      ToRecordDecl = RecordTo->getDecl();
+      FromRecordDecl = RecordFrom;
+      ToRecordDecl = RecordTo;
     }
   }
 

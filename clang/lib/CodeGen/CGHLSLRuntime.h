@@ -64,7 +64,7 @@ class InitListExpr;
 class HLSLBufferDecl;
 class HLSLResourceBindingAttr;
 class Type;
-class RecordType;
+class RecordDecl;
 class DeclContext;
 class HLSLPackOffsetAttr;
 
@@ -153,9 +153,8 @@ public:
 
   llvm::Instruction *getConvergenceToken(llvm::BasicBlock &BB);
 
-  llvm::TargetExtType *
-  getHLSLBufferLayoutType(const RecordType *LayoutStructTy);
-  void addHLSLBufferLayoutType(const RecordType *LayoutStructTy,
+  llvm::TargetExtType *getHLSLBufferLayoutType(const RecordDecl *LayoutStructD);
+  void addHLSLBufferLayoutType(const RecordDecl *LayoutStructD,
                                llvm::TargetExtType *LayoutTy);
   void emitInitListOpaqueValues(CodeGenFunction &CGF, InitListExpr *E);
 
@@ -164,7 +163,7 @@ private:
                                     llvm::GlobalVariable *BufGV);
   llvm::Triple::ArchType getArch();
 
-  llvm::DenseMap<const clang::RecordType *, llvm::TargetExtType *> LayoutTypes;
+  llvm::DenseMap<const clang::RecordDecl *, llvm::TargetExtType *> LayoutTypes;
 };
 
 } // namespace CodeGen

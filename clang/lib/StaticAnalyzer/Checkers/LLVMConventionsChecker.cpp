@@ -27,11 +27,10 @@ using namespace ento;
 //===----------------------------------------------------------------------===//
 
 static bool IsLLVMStringRef(QualType T) {
-  const RecordType *RT = T->getAs<RecordType>();
-  if (!RT)
+  const RecordDecl *RD = T->getAsRecordDecl();
+  if (!RD)
     return false;
-
-  return StringRef(QualType(RT, 0).getAsString()) == "class StringRef";
+  return RD->getNameAsString() == "StringRef";
 }
 
 /// Check whether the declaration is semantically inside the top-level
@@ -200,8 +199,7 @@ static bool IsPartOfAST(const CXXRecordDecl *R) {
 
   for (const auto &BS : R->bases()) {
     QualType T = BS.getType();
-    if (const RecordType *baseT = T->getAs<RecordType>()) {
-      CXXRecordDecl *baseD = cast<CXXRecordDecl>(baseT->getDecl());
+    if (const CXXRecordDecl *baseD = T->getAsCXXRecordDecl()) {
       if (IsPartOfAST(baseD))
         return true;
     }
@@ -246,8 +244,8 @@ void ASTFieldVisitor::Visit(FieldDecl *D) {
   if (AllocatesMemory(T))
     ReportError(T);
 
-  if (const RecordType *RT = T->getAs<RecordType>()) {
-    const RecordDecl *RD = RT->getDecl()->getDefinition();
+  if (const RecordDecl *RD = T->getAsRecordDecl()) {
+    RD = RD->getDefinition();
     for (auto *I : RD->fields())
       Visit(I);
   }

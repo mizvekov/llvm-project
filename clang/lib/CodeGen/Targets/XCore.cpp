@@ -359,7 +359,7 @@ static bool extractFieldType(SmallVectorImpl<FieldEncoding> &FE,
 /// Appends structure and union types to Enc and adds encoding to cache.
 /// Recursively calls appendType (via extractFieldType) for each field.
 /// Union types have their fields ordered according to the ABI.
-static bool appendRecordType(SmallStringEnc &Enc, const RecordType *RT,
+static bool appendRecordType(SmallStringEnc &Enc, const RecordDecl *RD,
                              const CodeGen::CodeGenModule &CGM,
                              TypeStringCache &TSC, const IdentifierInfo *ID) {
   // Append the cached TypeString if we have one.
@@ -371,7 +371,7 @@ static bool appendRecordType(SmallStringEnc &Enc, const RecordType *RT,
 
   // Start to emit an incomplete TypeString.
   size_t Start = Enc.size();
-  Enc += (RT->isUnionType()? 'u' : 's');
+  Enc += (RD->isUnion() ? 'u' : 's');
   Enc += '(';
   if (ID)
     Enc += ID->getName();
@@ -379,7 +379,7 @@ static bool appendRecordType(SmallStringEnc &Enc, const RecordType *RT,
 
   // We collect all encoded fields and order as necessary.
   bool IsRecursive = false;
-  const RecordDecl *RD = RT->getDecl()->getDefinition();
+  RD = RD->getDefinition();
   if (RD && !RD->field_empty()) {
     // An incomplete TypeString stub is placed in the cache for this RecordType
     // so that recursive calls to this RecordType will use it whilst building a
@@ -395,7 +395,7 @@ static bool appendRecordType(SmallStringEnc &Enc, const RecordType *RT,
     IsRecursive = TSC.removeIncomplete(ID);
     // The ABI requires unions to be sorted but not structures.
     // See FieldEncoding::operator< for sort algorithm.
-    if (RT->isUnionType())
+    if (RD->isUnion())
       llvm::sort(FE);
     // We can now complete the TypeString.
     unsigned E = FE.size();
@@ -411,9 +411,8 @@ static bool appendRecordType(SmallStringEnc &Enc, const RecordType *RT,
 }
 
 /// Appends enum types to Enc and adds the encoding to the cache.
-static bool appendEnumType(SmallStringEnc &Enc, const EnumType *ET,
-                           TypeStringCache &TSC,
-                           const IdentifierInfo *ID) {
+static bool appendEnumType(SmallStringEnc &Enc, const EnumDecl *ED,
+                           TypeStringCache &TSC, const IdentifierInfo *ID) {
   // Append the cached TypeString if we have one.
   StringRef TypeString = TSC.lookupStr(ID);
   if (!TypeString.empty()) {
@@ -428,7 +427,7 @@ static bool appendEnumType(SmallStringEnc &Enc, const EnumType *ET,
   Enc += "){";
 
   // We collect all encoded enumerations and order them alphanumerically.
-  if (const EnumDecl *ED = ET->getDecl()->getDefinition()) {
+  if ((ED = ED->getDefinition())) {
     SmallVector<FieldEncoding, 16> FE;
     for (auto I = ED->enumerator_begin(), E = ED->enumerator_end(); I != E;
          ++I) {
@@ -614,14 +613,14 @@ static bool appendType(SmallStringEnc &Enc, QualType QType,
   if (const PointerType *PT = QT->getAs<PointerType>())
     return appendPointerType(Enc, PT, CGM, TSC);
 
-  if (const EnumType *ET = QT->getAs<EnumType>())
-    return appendEnumType(Enc, ET, TSC, QT.getBaseTypeIdentifier());
+  if (const EnumDecl *ED = QT->getAsEnumDecl())
+    return appendEnumType(Enc, ED, TSC, QT.getBaseTypeIdentifier());
 
-  if (const RecordType *RT = QT->getAsStructureType())
-    return appendRecordType(Enc, RT, CGM, TSC, QT.getBaseTypeIdentifier());
+  if (const RecordDecl *RD = QT->getAsStructDecl())
+    return appendRecordType(Enc, RD, CGM, TSC, QT.getBaseTypeIdentifier());
 
-  if (const RecordType *RT = QT->getAsUnionType())
-    return appendRecordType(Enc, RT, CGM, TSC, QT.getBaseTypeIdentifier());
+  if (const RecordDecl *RD = QT->getAsUnionDecl())
+    return appendRecordType(Enc, RD, CGM, TSC, QT.getBaseTypeIdentifier());
 
   if (const FunctionType *FT = QT->getAs<FunctionType>())
     return appendFunctionType(Enc, FT, CGM, TSC);

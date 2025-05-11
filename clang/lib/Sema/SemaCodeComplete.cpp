@@ -3493,8 +3493,8 @@ static void AddTypedNameChunk(ASTContext &Context, const PrintingPolicy &Policy,
   case DeclarationName::CXXConstructorName: {
     CXXRecordDecl *Record = nullptr;
     QualType Ty = Name.getCXXNameType();
-    if (const auto *RecordTy = Ty->getAs<RecordType>())
-      Record = cast<CXXRecordDecl>(RecordTy->getDecl());
+    if (auto *RD = Ty->getAsCXXRecordDecl())
+      Record = RD;
     else if (const auto *InjectedTy = Ty->getAs<InjectedClassNameType>())
       Record = InjectedTy->getDecl();
     else {
@@ -5017,7 +5017,8 @@ void SemaCodeCompletion::CodeCompleteExpression(
                              Data.PreferredType->isMemberPointerType() ||
                              Data.PreferredType->isBlockPointerType();
     if (Data.PreferredType->isEnumeralType()) {
-      EnumDecl *Enum = Data.PreferredType->castAs<EnumType>()->getDecl();
+      EnumDecl *Enum = Data.PreferredType->getAsEnumDecl();
+      assert(Enum);
       if (auto *Def = Enum->getDefinition())
         Enum = Def;
       // FIXME: collect covered enumerators in cases like:
@@ -6142,7 +6143,8 @@ void SemaCodeCompletion::CodeCompleteCase(Scope *S) {
 
   // Code-complete the cases of a switch statement over an enumeration type
   // by providing the list of
-  EnumDecl *Enum = type->castAs<EnumType>()->getDecl();
+  EnumDecl *Enum = type->getAsEnumDecl();
+  assert(Enum);
   if (EnumDecl *Def = Enum->getDefinition())
     Enum = Def;
 

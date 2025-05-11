@@ -643,8 +643,8 @@ static EnumDecl *findEnumForBlockReturn(Expr *E) {
   }
 
   //   - it is an expression of that formal enum type.
-  if (const EnumType *ET = E->getType()->getAs<EnumType>()) {
-    return ET->getDecl();
+  if (EnumDecl *ED = E->getType()->getAsEnumDecl()) {
+    return ED;
   }
 
   // Otherwise, nope.

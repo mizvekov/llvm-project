@@ -147,7 +147,8 @@ void EnumCastOutOfRangeChecker::checkPreStmt(const CastExpr *CE,
   // If the isEnumeralType() returned true, then the declaration must exist
   // even if it is a stub declaration. It is up to the getDeclValuesForEnum()
   // function to handle this.
-  const EnumDecl *ED = T->castAs<EnumType>()->getDecl();
+  const EnumDecl *ED = T->getAsEnumDecl();
+  assert(ED);
 
   EnumValueVector DeclValues = getDeclValuesForEnum(ED);
 

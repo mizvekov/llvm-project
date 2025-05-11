@@ -199,7 +199,7 @@ class CGDebugInfo {
   llvm::DIType *CreateType(const HLSLAttributedResourceType *Ty,
                            llvm::DIFile *F);
   /// Get structure or union type.
-  llvm::DIType *CreateType(const RecordType *Tyg);
+  llvm::DIType *CreateType(const RecordDecl *RD);
 
   /// Create definition for the specified 'Ty'.
   ///
@@ -208,8 +208,8 @@ class CGDebugInfo {
   /// attribute on 'Ty', which can be a nullptr if no such attribute
   /// exists.
   std::pair<llvm::DIType *, llvm::DIType *>
-  CreateTypeDefinition(const RecordType *Ty);
-  llvm::DICompositeType *CreateLimitedType(const RecordType *Ty);
+  CreateTypeDefinition(const RecordDecl *RD);
+  llvm::DICompositeType *CreateLimitedType(const RecordDecl *RD);
   void CollectContainingType(const CXXRecordDecl *RD,
                              llvm::DICompositeType *CT);
   /// Get Objective-C interface type.
@@ -229,8 +229,8 @@ class CGDebugInfo {
   llvm::DIType *CreateType(const AtomicType *Ty, llvm::DIFile *F);
   llvm::DIType *CreateType(const PipeType *Ty, llvm::DIFile *F);
   /// Get enumeration type.
-  llvm::DIType *CreateEnumType(const EnumType *Ty);
-  llvm::DIType *CreateTypeDefinition(const EnumType *Ty);
+  llvm::DIType *CreateEnumType(const EnumDecl *ED);
+  llvm::DIType *CreateTypeDefinition(const EnumDecl *ED);
   /// Look up the completed type for a self pointer in the TypeCache and
   /// create a copy of it with the ObjectPointer and Artificial flags
   /// set. If the type is not cached, a new one is created. This should
@@ -683,7 +683,7 @@ private:
   llvm::DIScope *getCurrentContextDescriptor(const Decl *Decl);
 
   /// Create a forward decl for a RecordType in a given context.
-  llvm::DICompositeType *getOrCreateRecordFwdDecl(const RecordType *,
+  llvm::DICompositeType *getOrCreateRecordFwdDecl(const RecordDecl *,
                                                   llvm::DIScope *);
 
   /// Return current directory name.
@@ -722,7 +722,7 @@ private:
 
   /// Get the type from the cache or create a new partial type if
   /// necessary.
-  llvm::DICompositeType *getOrCreateLimitedType(const RecordType *Ty);
+  llvm::DICompositeType *getOrCreateLimitedType(const RecordDecl *RD);
 
   /// Create type metadata for a source language type.
   llvm::DIType *CreateTypeNode(QualType Ty, llvm::DIFile *Fg);

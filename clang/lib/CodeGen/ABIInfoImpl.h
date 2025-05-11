@@ -41,7 +41,7 @@ bool isAggregateTypeForABI(QualType T);
 
 llvm::Type *getVAListElementType(CodeGenFunction &CGF);
 
-CGCXXABI::RecordArgABI getRecordArgABI(const RecordType *RT, CGCXXABI &CXXABI);
+CGCXXABI::RecordArgABI getRecordArgABI(const RecordDecl *RD, CGCXXABI &CXXABI);
 
 CGCXXABI::RecordArgABI getRecordArgABI(QualType T, CGCXXABI &CXXABI);
 

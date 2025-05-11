@@ -2176,7 +2176,7 @@ static bool CheckConstexprCtorInitializer(Sema &SemaRef,
       return false;
     }
   } else if (Field->isAnonymousStructOrUnion()) {
-    const RecordDecl *RD = Field->getType()->castAs<RecordType>()->getDecl();
+    const RecordDecl *RD = Field->getType()->getAsRecordDecl();
     for (auto *I : RD->fields())
       // If an anonymous union contains an anonymous struct of which any member
       // is initialized, all members must be initialized.
@@ -2911,9 +2911,7 @@ NoteIndirectBases(ASTContext &Context, IndirectBaseSet &Set,
 {
   // Even though the incoming type is a base, it might not be
   // a class -- it could be a template parm, for instance.
-  if (auto Rec = Type->getAs<RecordType>()) {
-    auto Decl = Rec->getAsCXXRecordDecl();
-
+  if (auto Decl = Type->getAsCXXRecordDecl()) {
     // Iterate over its bases.
     for (const auto &BaseSpec : Decl->bases()) {
       QualType Base = Context.getCanonicalType(BaseSpec.getType())
@@ -2972,8 +2970,7 @@ bool Sema::AttachBaseSpecifiers(CXXRecordDecl *Class,
       if (Bases.size() > 1)
         NoteIndirectBases(Context, IndirectBaseTypes, NewBaseType);
 
-      if (const RecordType *Record = NewBaseType->getAs<RecordType>()) {
-        const CXXRecordDecl *RD = cast<CXXRecordDecl>(Record->getDecl());
+      if (const CXXRecordDecl *RD = NewBaseType->getAsCXXRecordDecl()) {
         if (Class->isInterface() &&
               (!RD->isInterfaceLike() ||
                KnownBase->getAccessSpecifier() != AS_public)) {
@@ -5456,7 +5453,7 @@ bool Sema::SetCtorInitializers(CXXConstructorDecl *Constructor, bool AnyErrors,
     CXXCtorInitializer *Member = Initializers[i];
 
     if (Member->isBaseInitializer())
-      Info.AllBaseFields[Member->getBaseClass()->getAs<RecordType>()] = Member;
+      Info.AllBaseFields[Member->getBaseClass()->getAsRecordDecl()] = Member;
     else {
       Info.AllBaseFields[Member->getAnyMember()->getCanonicalDecl()] = Member;
 
@@ -5484,8 +5481,8 @@ bool Sema::SetCtorInitializers(CXXConstructorDecl *Constructor, bool AnyErrors,
 
   // Push virtual bases before others.
   for (auto &VBase : ClassDecl->vbases()) {
-    if (CXXCtorInitializer *Value
-        = Info.AllBaseFields.lookup(VBase.getType()->getAs<RecordType>())) {
+    if (CXXCtorInitializer *Value =
+            Info.AllBaseFields.lookup(VBase.getType()->getAsRecordDecl())) {
       // [class.base.init]p7, per DR257:
       //   A mem-initializer where the mem-initializer-id names a virtual base
       //   class is ignored during execution of a constructor of any class that
@@ -5523,8 +5520,8 @@ bool Sema::SetCtorInitializers(CXXConstructorDecl *Constructor, bool AnyErrors,
     if (Base.isVirtual())
       continue;
 
-    if (CXXCtorInitializer *Value
-          = Info.AllBaseFields.lookup(Base.getType()->getAs<RecordType>())) {
+    if (CXXCtorInitializer *Value =
+            Info.AllBaseFields.lookup(Base.getType()->getAsRecordDecl())) {
       Info.AllToInit.push_back(Value);
     } else if (!AnyErrors) {
       CXXCtorInitializer *CXXBaseInit;
@@ -5612,8 +5609,7 @@ bool Sema::SetCtorInitializers(CXXConstructorDecl *Constructor, bool AnyErrors,
 }
 
 static void PopulateKeysForFields(FieldDecl *Field, SmallVectorImpl<const void*> &IdealInits) {
-  if (const RecordType *RT = Field->getType()->getAs<RecordType>()) {
-    const RecordDecl *RD = RT->getDecl();
+  if (const RecordDecl *RD = Field->getType()->getAsRecordDecl()) {
     if (RD->isAnonymousStructOrUnion()) {
       for (auto *Field : RD->fields())
         PopulateKeysForFields(Field, IdealInits);
@@ -7863,10 +7859,9 @@ static bool defaultedSpecialMemberIsConstexpr(
   //      class is a constexpr function, and
   if (!S.getLangOpts().CPlusPlus23) {
     for (const auto &B : ClassDecl->bases()) {
-      const RecordType *BaseType = B.getType()->getAs<RecordType>();
-      if (!BaseType)
+      CXXRecordDecl *BaseClassDecl = B.getType()->getAsCXXRecordDecl();
+      if (!BaseClassDecl)
         continue;
-      CXXRecordDecl *BaseClassDecl = cast<CXXRecordDecl>(BaseType->getDecl());
       if (!specialMemberIsConstexpr(S, BaseClassDecl, CSM, 0, ConstArg,
                                     InheritedCtor, Inherited))
         return false;
@@ -7888,8 +7883,7 @@ static bool defaultedSpecialMemberIsConstexpr(
           F->hasInClassInitializer())
         continue;
       QualType BaseType = S.Context.getBaseElementType(F->getType());
-      if (const RecordType *RecordTy = BaseType->getAs<RecordType>()) {
-        CXXRecordDecl *FieldRecDecl = cast<CXXRecordDecl>(RecordTy->getDecl());
+      if (CXXRecordDecl *FieldRecDecl = BaseType->getAsCXXRecordDecl()) {
         if (!specialMemberIsConstexpr(S, FieldRecDecl, CSM,
                                       BaseType.getCVRQualifiers(),
                                       ConstArg && !F->isMutable()))
@@ -10714,8 +10708,8 @@ public:
   /// method overloads virtual methods in a base class without overriding any,
   /// to be used with CXXRecordDecl::lookupInBases().
   bool operator()(const CXXBaseSpecifier *Specifier, CXXBasePath &Path) {
-    RecordDecl *BaseRecord =
-        Specifier->getType()->castAs<RecordType>()->getDecl();
+    RecordDecl *BaseRecord = Specifier->getType()->getAsRecordDecl();
+    assert(BaseRecord);
 
     DeclarationName Name = Method->getDeclName();
     assert(Name.getNameKind() == DeclarationName::Identifier);
@@ -10894,9 +10888,8 @@ void Sema::checkIllFormedTrivialABIStruct(CXXRecordDecl &RD) {
       return;
     }
 
-    if (const auto *RT = FT->getBaseElementTypeUnsafe()->getAs<RecordType>())
-      if (!RT->isDependentType() &&
-          !cast<CXXRecordDecl>(RT->getDecl())->canPassInRegisters()) {
+    if (const auto *RD = FT->getBaseElementTypeUnsafe()->getAsCXXRecordDecl())
+      if (!RD->isDependentType() && !RD->canPassInRegisters()) {
         PrintDiagAndRemoveAttr(5);
         return;
       }
@@ -12432,11 +12425,10 @@ static bool isStdClassTemplate(Sema &S, QualType SugaredType, QualType *TypeArg,
       Template = dyn_cast_or_null<ClassTemplateDecl>(
           TST->getTemplateName().getAsTemplateDecl());
       Arguments = TST->template_arguments();
-    } else if (const RecordType *RT = SugaredType->getAs<RecordType>()) {
-      ClassTemplateSpecializationDecl *Specialization =
-          dyn_cast<ClassTemplateSpecializationDecl>(RT->getDecl());
+    } else if (RecordDecl *RD = SugaredType->getAsRecordDecl()) {
+      auto *Specialization = dyn_cast<ClassTemplateSpecializationDecl>(RD);
       if (!Specialization) {
-        ReportMatchingNameAsMalformed(RT->getDecl());
+        ReportMatchingNameAsMalformed(RD);
         return false;
       }
       Template = Specialization->getSpecializedTemplate();
@@ -14230,11 +14222,10 @@ struct SpecialMemberExceptionSpecInfo
 }
 
 bool SpecialMemberExceptionSpecInfo::visitBase(CXXBaseSpecifier *Base) {
-  auto *RT = Base->getType()->getAs<RecordType>();
-  if (!RT)
+  auto *BaseClass = Base->getType()->getAsCXXRecordDecl();
+  if (!BaseClass)
     return false;
 
-  auto *BaseClass = cast<CXXRecordDecl>(RT->getDecl());
   Sema::SpecialMemberOverloadResult SMOR = lookupInheritedCtor(BaseClass);
   if (auto *BaseCtor = SMOR.getMethod()) {
     visitSubobjectCall(Base, BaseCtor);
@@ -14258,10 +14249,9 @@ bool SpecialMemberExceptionSpecInfo::visitField(FieldDecl *FD) {
       E = S.BuildCXXDefaultInitExpr(Loc, FD).get();
     if (E)
       ExceptSpec.CalledExpr(E);
-  } else if (auto *RT = S.Context.getBaseElementType(FD->getType())
-                            ->getAs<RecordType>()) {
-    visitClassSubobject(cast<CXXRecordDecl>(RT->getDecl()), FD,
-                        FD->getType().getCVRQualifiers());
+  } else if (auto *RD = S.Context.getBaseElementType(FD->getType())
+                            ->getAsCXXRecordDecl()) {
+    visitClassSubobject(RD, FD, FD->getType().getCVRQualifiers());
   }
   return false;
 }
@@ -15080,8 +15070,7 @@ buildMemcpyForAssignmentOp(Sema &S, SourceLocation Loc, QualType T,
 
   const Type *E = T->getBaseElementTypeUnsafe();
   bool NeedsCollectableMemCpy =
-      E->isRecordType() &&
-      E->castAs<RecordType>()->getDecl()->hasObjectMember();
+      E->isRecordType() && E->getAsRecordDecl()->hasObjectMember();
 
   // Create a reference to the __builtin_objc_memmove_collectable function
   StringRef MemCpyName = NeedsCollectableMemCpy ?
@@ -15157,9 +15146,7 @@ buildSingleCopyAssignRecursively(Sema &S, SourceLocation Loc, QualType T,
   //       the class is used (as if by explicit qualification; that is,
   //       ignoring any possible virtual overriding functions in more derived
   //       classes);
-  if (const RecordType *RecordTy = T->getAs<RecordType>()) {
-    CXXRecordDecl *ClassDecl = cast<CXXRecordDecl>(RecordTy->getDecl());
-
+  if (CXXRecordDecl *ClassDecl = T->getAsCXXRecordDecl()) {
     // Look for operator=.
     DeclarationName Name
       = S.Context.DeclarationNames.getCXXOperatorName(OO_Equal);
@@ -15631,7 +15618,7 @@ void Sema::DefineImplicitCopyAssignment(SourceLocation CurrentLocation,
 
     // Check for members of const-qualified, non-class type.
     QualType BaseType = Context.getBaseElementType(Field->getType());
-    if (!BaseType->getAs<RecordType>() && BaseType.isConstQualified()) {
+    if (!BaseType->getAsRecordDecl() && BaseType.isConstQualified()) {
       Diag(ClassDecl->getLocation(), diag::err_uninitialized_member_for_assign)
         << Context.getTagDeclType(ClassDecl) << 1 << Field->getDeclName();
       Diag(Field->getLocation(), diag::note_declared_at);
@@ -16018,7 +16005,7 @@ void Sema::DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
 
     // Check for members of const-qualified, non-class type.
     QualType BaseType = Context.getBaseElementType(Field->getType());
-    if (!BaseType->getAs<RecordType>() && BaseType.isConstQualified()) {
+    if (!BaseType->getAsRecordDecl() && BaseType.isConstQualified()) {
       Diag(ClassDecl->getLocation(), diag::err_uninitialized_member_for_assign)
         << Context.getTagDeclType(ClassDecl) << 1 << Field->getDeclName();
       Diag(Field->getLocation(), diag::note_declared_at);
@@ -16610,14 +16597,14 @@ ExprResult Sema::BuildCXXConstructExpr(
       Constructor);
 }
 
-void Sema::FinalizeVarWithDestructor(VarDecl *VD, const RecordType *Record) {
-  if (VD->isInvalidDecl()) return;
+void Sema::FinalizeVarWithDestructor(VarDecl *VD, CXXRecordDecl *ClassDecl) {
+  if (VD->isInvalidDecl())
+    return;
   // If initializing the variable failed, don't also diagnose problems with
   // the destructor, they're likely related.
   if (VD->getInit() && VD->getInit()->containsErrors())
     return;
 
-  CXXRecordDecl *ClassDecl = cast<CXXRecordDecl>(Record->getDecl());
   if (ClassDecl->isInvalidDecl()) return;
   if (ClassDecl->hasIrrelevantDestructor()) return;
   if (ClassDecl->isDependentContext()) return;
@@ -17629,7 +17616,7 @@ VarDecl *Sema::BuildExceptionDeclaration(Scope *S, TypeSourceInfo *TInfo,
     Invalid = true;
 
   if (!Invalid && !ExDeclType->isDependentType()) {
-    if (const RecordType *recordType = ExDeclType->getAs<RecordType>()) {
+    if (CXXRecordDecl *RD = ExDeclType->getAsCXXRecordDecl()) {
       // Insulate this from anything else we might currently be parsing.
       EnterExpressionEvaluationContext scope(
           *this, ExpressionEvaluationContext::PotentiallyEvaluated);
@@ -17666,7 +17653,7 @@ VarDecl *Sema::BuildExceptionDeclaration(Scope *S, TypeSourceInfo *TInfo,
         }
 
         // And make sure it's destructable.
-        FinalizeVarWithDestructor(ExDecl, recordType);
+        FinalizeVarWithDestructor(ExDecl, RD);
       }
     }
   }
@@ -19107,8 +19094,8 @@ bool Sema::CheckOverridingFunctionReturnType(const CXXMethodDecl *New,
     //   that of B::f, the class type in the return type of D::f shall be
     //   complete at the point of declaration of D::f or shall be the class
     //   type D.
-    if (const RecordType *RT = NewClassTy->getAs<RecordType>()) {
-      if (!RT->isBeingDefined() &&
+    if (const RecordDecl *RD = NewClassTy->getAsRecordDecl()) {
+      if (!RD->isBeingDefined() &&
           RequireCompleteType(New->getLocation(), NewClassTy,
                               diag::err_covariant_return_incomplete,
                               New->getDeclName()))
@@ -19485,8 +19472,8 @@ void Sema::MarkVirtualMembersReferenced(SourceLocation Loc,
     return;
 
   for (const auto &I : RD->bases()) {
-    const auto *Base =
-        cast<CXXRecordDecl>(I.getType()->castAs<RecordType>()->getDecl());
+    const auto *Base = I.getType()->getAsCXXRecordDecl();
+    assert(Base);
     if (Base->getNumVBases() == 0)
       continue;
     MarkVirtualMembersReferenced(Loc, Base);

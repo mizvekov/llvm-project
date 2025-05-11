@@ -650,9 +650,9 @@ static void checkNoThrow(Sema &S, const Stmt *E,
     // Check the destructor of the call return type, if any.
     if (ReturnType.isDestructedType() ==
         QualType::DestructionKind::DK_cxx_destructor) {
-      const auto *T =
-          cast<RecordType>(ReturnType.getCanonicalType().getTypePtr());
-      checkDeclNoexcept(cast<CXXRecordDecl>(T->getDecl())->getDestructor(),
+      const auto *RD = ReturnType.getCanonicalType()->getAsCXXRecordDecl();
+      assert(RD);
+      checkDeclNoexcept(RD->getDestructor(),
                         /*IsDtor=*/true);
     }
   } else

@@ -373,8 +373,8 @@ ABIArgInfo AArch64ABIInfo::classifyArgumentType(QualType Ty, bool IsVariadicFn,
 
   if (!passAsAggregateType(Ty)) {
     // Treat an enum type as its underlying type.
-    if (const EnumType *EnumTy = Ty->getAs<EnumType>())
-      Ty = EnumTy->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = Ty->getAsEnumDecl())
+      Ty = Enum->getIntegerType();
 
     if (const auto *EIT = Ty->getAs<BitIntType>())
       if (EIT->getNumBits() > 128)
@@ -517,8 +517,8 @@ ABIArgInfo AArch64ABIInfo::classifyReturnType(QualType RetTy,
 
   if (!passAsAggregateType(RetTy)) {
     // Treat an enum type as its underlying type.
-    if (const EnumType *EnumTy = RetTy->getAs<EnumType>())
-      RetTy = EnumTy->getDecl()->getIntegerType();
+    if (const EnumDecl *Enum = RetTy->getAsEnumDecl())
+      RetTy = Enum->getIntegerType();
 
     if (const auto *EIT = RetTy->getAs<BitIntType>())
       if (EIT->getNumBits() > 128)
@@ -707,14 +707,13 @@ bool AArch64ABIInfo::passAsPureScalableType(
     return true;
   }
 
-  if (const RecordType *RT = Ty->getAs<RecordType>()) {
+  if (const RecordDecl *RD = Ty->getAsRecordDecl()) {
     // If the record cannot be passed in registers, then it's not a PST.
-    if (CGCXXABI::RecordArgABI RAA = getRecordArgABI(RT, getCXXABI());
+    if (CGCXXABI::RecordArgABI RAA = getRecordArgABI(RD, getCXXABI());
         RAA != CGCXXABI::RAA_Default)
       return false;
 
     // Pure scalable types are never unions and never contain unions.
-    const RecordDecl *RD = RT->getDecl();
     if (RD->isUnion())
       return false;
 

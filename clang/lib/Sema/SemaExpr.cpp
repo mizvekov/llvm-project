@@ -1538,8 +1538,8 @@ void Sema::checkEnumArithmeticConversions(Expr *LHS, Expr *RHS,
     // are ill-formed.
     if (getLangOpts().CPlusPlus26)
       DiagID = diag::warn_conv_mixed_enum_types_cxx26;
-    else if (!L->castAs<EnumType>()->getDecl()->hasNameForLinkage() ||
-             !R->castAs<EnumType>()->getDecl()->hasNameForLinkage()) {
+    else if (!L->getAsEnumDecl()->hasNameForLinkage() ||
+             !R->getAsEnumDecl()->hasNameForLinkage()) {
       // If either enumeration type is unnamed, it's less likely that the
       // user cares about this, but this situation is still deprecated in
       // C++2a. Use a different warning group.
@@ -3088,7 +3088,7 @@ Sema::PerformObjectMemberConversion(Expr *From,
     QualType QType = QualType(Qualifier->getAsType(), 0);
     assert(QType->isRecordType() && "lookup done with non-record type");
 
-    QualType QRecordType = QualType(QType->castAs<RecordType>(), 0);
+    QualType QRecordType = QualType(QType->castAs<TagType>(), 0);
 
     // In C++98, the qualifier type doesn't actually have to be a base
     // type of the object type, in which case we just ignore it.
@@ -7111,9 +7111,9 @@ ExprResult Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
   // Warn for unions passing across security boundary (CMSE).
   if (FuncT != nullptr && FuncT->getCmseNSCallAttr()) {
     for (unsigned i = 0, e = Args.size(); i != e; i++) {
-      if (const auto *RT =
-              dyn_cast<RecordType>(Args[i]->getType().getCanonicalType())) {
-        if (RT->getDecl()->isOrContainsUnion())
+      if (const auto *RD =
+              Args[i]->getType().getCanonicalType()->getAsRecordDecl()) {
+        if (RD->isOrContainsUnion())
           Diag(Args[i]->getBeginLoc(), diag::warn_cmse_nonsecure_union)
               << 0 << i;
       }
@@ -8635,9 +8635,9 @@ QualType Sema::CheckConditionalOperands(ExprResult &Cond, ExprResult &LHS,
 
   // If both operands are the same structure or union type, the result is that
   // type.
-  if (const RecordType *LHSRT = LHSTy->getAs<RecordType>()) {    // C99 6.5.15p3
-    if (const RecordType *RHSRT = RHSTy->getAs<RecordType>())
-      if (LHSRT->getDecl() == RHSRT->getDecl())
+  if (const RecordDecl *LHSRD = LHSTy->getAsRecordDecl()) { // C99 6.5.15p3
+    if (const RecordDecl *RHSRD = RHSTy->getAsRecordDecl())
+      if (declaresSameEntity(LHSRD, RHSRD))
         // "If both the operands have structure or union type, the result has
         // that type."  This implies that CV qualifiers are dropped.
         return Context.getCommonSugaredType(LHSTy.getUnqualifiedType(),
@@ -9723,12 +9723,11 @@ Sema::CheckTransparentUnionArgumentConstraints(QualType ArgType,
 
   // If the ArgType is a Union type, we want to handle a potential
   // transparent_union GCC extension.
-  const RecordType *UT = ArgType->getAsUnionType();
-  if (!UT || !UT->getDecl()->hasAttr<TransparentUnionAttr>())
+  const RecordDecl *UD = ArgType->getAsUnionDecl();
+  if (!UD || !UD->hasAttr<TransparentUnionAttr>())
     return AssignConvertType::Incompatible;
 
   // The field to initialize within the transparent union.
-  RecordDecl *UD = UT->getDecl();
   FieldDecl *InitField = nullptr;
   // It's compatible if the expression matches any of the fields.
   for (auto *it : UD->fields()) {
@@ -11445,8 +11444,8 @@ QualType Sema::CheckSubtractionOperands(ExprResult &LHS, ExprResult &RHS,
 }
 
 static bool isScopedEnumerationType(QualType T) {
-  if (const EnumType *ET = T->getAs<EnumType>())
-    return ET->getDecl()->isScoped();
+  if (const EnumDecl *ED = T->getAsEnumDecl())
+    return ED->isScoped();
   return false;
 }
 
@@ -12335,8 +12334,7 @@ static QualType checkArithmeticOrEnumeralThreeWayCompare(Sema &S,
       S.InvalidOperands(Loc, LHS, RHS);
       return QualType();
     }
-    QualType IntType =
-        LHSStrippedType->castAs<EnumType>()->getDecl()->getIntegerType();
+    QualType IntType = LHSStrippedType->getAsEnumDecl()->getIntegerType();
     assert(IntType->isArithmeticType());
 
     // We can't use `CK_IntegralCast` when the underlying type is 'bool', so we
@@ -13720,19 +13718,18 @@ enum OriginalExprKind {
 };
 
 static void DiagnoseRecursiveConstFields(Sema &S, const ValueDecl *VD,
-                                         const RecordType *Ty,
+                                         const RecordDecl *RD,
                                          SourceLocation Loc, SourceRange Range,
                                          OriginalExprKind OEK,
                                          bool &DiagnosticEmitted) {
-  std::vector<const RecordType *> RecordTypeList;
-  RecordTypeList.push_back(Ty);
+  std::vector<const RecordDecl *> RecordList;
+  RecordList.push_back(RD);
   unsigned NextToCheckIndex = 0;
   // We walk the record hierarchy breadth-first to ensure that we print
   // diagnostics in field nesting order.
-  while (RecordTypeList.size() > NextToCheckIndex) {
+  while (RecordList.size() > NextToCheckIndex) {
     bool IsNested = NextToCheckIndex > 0;
-    for (const FieldDecl *Field :
-         RecordTypeList[NextToCheckIndex]->getDecl()->fields()) {
+    for (const FieldDecl *Field : RecordList[NextToCheckIndex]->fields()) {
       // First, check every field for constness.
       QualType FieldTy = Field->getType();
       if (FieldTy.isConstQualified()) {
@@ -13749,9 +13746,9 @@ static void DiagnoseRecursiveConstFields(Sema &S, const ValueDecl *VD,
 
       // Then we append it to the list to check next in order.
       FieldTy = FieldTy.getCanonicalType();
-      if (const auto *FieldRecTy = FieldTy->getAs<RecordType>()) {
-        if (!llvm::is_contained(RecordTypeList, FieldRecTy))
-          RecordTypeList.push_back(FieldRecTy);
+      if (const auto *FieldRec = FieldTy->getAsRecordDecl()) {
+        if (!llvm::is_contained(RecordList, FieldRec))
+          RecordList.push_back(FieldRec);
       }
     }
     ++NextToCheckIndex;
@@ -13765,18 +13762,18 @@ static void DiagnoseRecursiveConstFields(Sema &S, const Expr *E,
   QualType Ty = E->getType();
   assert(Ty->isRecordType() && "lvalue was not record?");
   SourceRange Range = E->getSourceRange();
-  const RecordType *RTy = Ty.getCanonicalType()->getAs<RecordType>();
+  const RecordDecl *RD = Ty.getCanonicalType()->getAsRecordDecl();
   bool DiagEmitted = false;
 
   if (const MemberExpr *ME = dyn_cast<MemberExpr>(E))
-    DiagnoseRecursiveConstFields(S, ME->getMemberDecl(), RTy, Loc,
-            Range, OEK_Member, DiagEmitted);
+    DiagnoseRecursiveConstFields(S, ME->getMemberDecl(), RD, Loc, Range,
+                                 OEK_Member, DiagEmitted);
   else if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E))
-    DiagnoseRecursiveConstFields(S, DRE->getDecl(), RTy, Loc,
-            Range, OEK_Variable, DiagEmitted);
+    DiagnoseRecursiveConstFields(S, DRE->getDecl(), RD, Loc, Range,
+                                 OEK_Variable, DiagEmitted);
   else
-    DiagnoseRecursiveConstFields(S, nullptr, RTy, Loc,
-            Range, OEK_LValue, DiagEmitted);
+    DiagnoseRecursiveConstFields(S, nullptr, RD, Loc, Range, OEK_LValue,
+                                 DiagEmitted);
   if (!DiagEmitted)
     DiagnoseConstAssignment(S, E, Loc);
 }
@@ -16222,11 +16219,10 @@ ExprResult Sema::BuildBuiltinOffsetOf(SourceLocation BuiltinLoc,
       return ExprError();
 
     // Look for the designated field.
-    const RecordType *RC = CurrentType->getAs<RecordType>();
-    if (!RC)
+    RecordDecl *RD = CurrentType->getAsRecordDecl();
+    if (!RD)
       return ExprError(Diag(OC.LocEnd, diag::err_offsetof_record_type)
                        << CurrentType);
-    RecordDecl *RD = RC->getDecl();
 
     // C++ [lib.support.types]p5:
     //   The macro offsetof accepts a restricted set of type arguments in this
@@ -16623,8 +16619,7 @@ ExprResult Sema::ActOnBlockStmtExpr(SourceLocation CaretLoc,
     auto *Var = cast<VarDecl>(Cap.getVariable());
     Expr *CopyExpr = nullptr;
     if (getLangOpts().CPlusPlus && Cap.isCopyCapture()) {
-      if (const RecordType *Record =
-              Cap.getCaptureType()->getAs<RecordType>()) {
+      if (CXXRecordDecl *Record = Cap.getCaptureType()->getAsCXXRecordDecl()) {
         // The capture logic needs the destructor, so make sure we mark it.
         // Usually this is unnecessary because most local variables have
         // their destructors marked at declaration time, but parameters are
@@ -16852,8 +16847,8 @@ ExprResult Sema::BuildVAArgExpr(SourceLocation BuiltinLoc,
       // va_arg. Instead, get the underlying type of the enumeration and pass
       // that.
       QualType UnderlyingType = TInfo->getType();
-      if (const auto *ET = UnderlyingType->getAs<EnumType>())
-        UnderlyingType = ET->getDecl()->getIntegerType();
+      if (const auto *ED = UnderlyingType->getAsEnumDecl())
+        UnderlyingType = ED->getIntegerType();
       if (Context.typesAreCompatible(PromoteType, UnderlyingType,
                                      /*CompareUnqualified*/ true))
         PromoteType = QualType();
@@ -18801,8 +18796,8 @@ static bool isVariableCapturable(CapturingScopeInfo *CSI, ValueDecl *Var,
   }
   // Prohibit structs with flexible array members too.
   // We cannot capture what is in the tail end of the struct.
-  if (const RecordType *VTTy = Var->getType()->getAs<RecordType>()) {
-    if (VTTy->getDecl()->hasFlexibleArrayMember()) {
+  if (const RecordDecl *VT = Var->getType()->getAsRecordDecl()) {
+    if (VT->hasFlexibleArrayMember()) {
       if (Diagnose) {
         if (IsBlock)
           S.Diag(Loc, diag::err_ref_flexarray_type);
@@ -19891,7 +19886,7 @@ ExprResult Sema::CheckLValueToRValueConversionOperand(Expr *E) {
   // C++2a [basic.def.odr]p4:
   //   [...] an expression of non-volatile-qualified non-class type to which
   //   the lvalue-to-rvalue conversion is applied [...]
-  if (E->getType().isVolatileQualified() || E->getType()->getAs<RecordType>())
+  if (E->getType().isVolatileQualified() || E->getType()->getAsRecordDecl())
     return E;
 
   ExprResult Result =

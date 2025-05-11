@@ -194,7 +194,7 @@ public:
     auto elemTy = origTy;
     unsigned pathLength = asImpl().readUInt32();
     for (unsigned i = 0; i < pathLength; ++i) {
-      if (elemTy->template getAs<RecordType>()) {
+      if (elemTy->getAsRecordDecl()) {
         unsigned int_ = asImpl().readUInt32();
         Decl *decl = asImpl().template readDeclAs<Decl>();
         if (auto *recordDecl = dyn_cast<CXXRecordDecl>(decl))

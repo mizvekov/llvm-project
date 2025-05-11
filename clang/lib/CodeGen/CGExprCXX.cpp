@@ -180,8 +180,9 @@ static CXXRecordDecl *getCXXRecord(const Expr *E) {
   QualType T = E->getType();
   if (const PointerType *PTy = T->getAs<PointerType>())
     T = PTy->getPointeeType();
-  const RecordType *Ty = T->castAs<RecordType>();
-  return cast<CXXRecordDecl>(Ty->getDecl());
+  CXXRecordDecl *RD = T->getAsCXXRecordDecl();
+  assert(RD);
+  return RD;
 }
 
 // Note: This function also emit constructor calls to support a MSVC
@@ -1236,12 +1237,12 @@ void CodeGenFunction::EmitNewArrayInitializer(
   // If we have a struct whose every field is value-initialized, we can
   // usually use memset.
   if (auto *ILE = dyn_cast<InitListExpr>(Init)) {
-    if (const RecordType *RType = ILE->getType()->getAs<RecordType>()) {
-      if (RType->getDecl()->isStruct()) {
+    if (const RecordDecl *RD = ILE->getType()->getAsRecordDecl()) {
+      if (RD->isStruct()) {
         unsigned NumElements = 0;
-        if (auto *CXXRD = dyn_cast<CXXRecordDecl>(RType->getDecl()))
+        if (auto *CXXRD = dyn_cast<CXXRecordDecl>(RD))
           NumElements = CXXRD->getNumBases();
-        for (auto *Field : RType->getDecl()->fields())
+        for (auto *Field : RD->fields())
           if (!Field->isUnnamedBitField())
             ++NumElements;
         // FIXME: Recurse into nested InitListExprs.
@@ -1690,8 +1691,7 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
       if (allocatorType->getNumParams() > IndexOfAlignArg) {
         AlignValT = allocatorType->getParamType(IndexOfAlignArg);
         assert(getContext().hasSameUnqualifiedType(
-                   AlignValT->castAs<EnumType>()->getDecl()->getIntegerType(),
-                   sizeType) &&
+                   AlignValT->getAsEnumDecl()->getIntegerType(), sizeType) &&
                "wrong type for alignment parameter");
         ++ParamsToSkip;
       } else {
@@ -1973,8 +1973,7 @@ static bool EmitObjectDelete(CodeGenFunction &CGF,
   // Find the destructor for the type, if applicable.  If the
   // destructor is virtual, we'll just emit the vcall and return.
   const CXXDestructorDecl *Dtor = nullptr;
-  if (const RecordType *RT = ElementType->getAs<RecordType>()) {
-    CXXRecordDecl *RD = cast<CXXRecordDecl>(RT->getDecl());
+  if (CXXRecordDecl *RD = ElementType->getAsCXXRecordDecl()) {
     if (RD->hasDefinition() && !RD->hasTrivialDestructor()) {
       Dtor = RD->getDestructor();
 

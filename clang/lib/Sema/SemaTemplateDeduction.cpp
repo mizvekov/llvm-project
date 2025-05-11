@@ -678,9 +678,8 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
   // If the argument type is a class template specialization, we
   // perform template argument deduction using its template
   // arguments.
-  const auto *RA = UA->getAs<RecordType>();
   const auto *SA =
-      RA ? dyn_cast<ClassTemplateSpecializationDecl>(RA->getDecl()) : nullptr;
+      dyn_cast_or_null<ClassTemplateSpecializationDecl>(UA->getAsRecordDecl());
   if (!SA) {
     Info.FirstArg = TemplateArgument(P);
     Info.SecondArg = TemplateArgument(A);

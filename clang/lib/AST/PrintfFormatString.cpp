@@ -790,8 +790,8 @@ bool PrintfSpecifier::fixType(QualType QT, const LangOptions &LangOpt,
   }
 
   // If it's an enum, get its underlying type.
-  if (const EnumType *ETy = QT->getAs<EnumType>())
-    QT = ETy->getDecl()->getIntegerType();
+  if (const EnumDecl *ED = QT->getAsEnumDecl())
+    QT = ED->getIntegerType();
 
   const BuiltinType *BT = QT->getAs<BuiltinType>();
   if (!BT) {

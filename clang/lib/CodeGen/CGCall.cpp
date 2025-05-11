@@ -1006,10 +1006,9 @@ getTypeExpansion(QualType Ty, const ASTContext &Context) {
     return std::make_unique<ConstantArrayExpansion>(AT->getElementType(),
                                                     AT->getZExtSize());
   }
-  if (const RecordType *RT = Ty->getAs<RecordType>()) {
+  if (const RecordDecl *RD = Ty->getAsRecordDecl()) {
     SmallVector<const CXXBaseSpecifier *, 1> Bases;
     SmallVector<const FieldDecl *, 1> Fields;
-    const RecordDecl *RD = RT->getDecl();
     assert(!RD->hasFlexibleArrayMember() &&
            "Cannot expand structure with flexible array.");
     if (RD->isUnion()) {
@@ -1877,9 +1876,8 @@ bool CodeGenModule::MayDropFunctionReturn(const ASTContext &Context,
                                           QualType ReturnType) const {
   // We can't just discard the return value for a record type with a
   // complex destructor or a non-trivially copyable type.
-  if (const RecordType *RT =
-          ReturnType.getCanonicalType()->getAs<RecordType>()) {
-    if (const auto *ClassDecl = dyn_cast<CXXRecordDecl>(RT->getDecl()))
+  if (const RecordDecl *RD = ReturnType.getCanonicalType()->getAsRecordDecl()) {
+    if (const auto *ClassDecl = dyn_cast<CXXRecordDecl>(RD))
       return ClassDecl->hasTrivialDestructor();
   }
   return ReturnType.isTriviallyCopyableType(Context);
@@ -3769,11 +3767,11 @@ static void setUsedBits(CodeGenModule &, QualType, int,
 // not handle base classes, virtual tables, etc, since they cannot happen in
 // CMSE function arguments or return. The bit mask corresponds to the target
 // memory layout, i.e. it's endian dependent.
-static void setUsedBits(CodeGenModule &CGM, const RecordType *RTy, int Offset,
+static void setUsedBits(CodeGenModule &CGM, const RecordDecl *RD, int Offset,
                         SmallVectorImpl<uint64_t> &Bits) {
   ASTContext &Context = CGM.getContext();
   int CharWidth = Context.getCharWidth();
-  const RecordDecl *RD = RTy->getDecl()->getDefinition();
+  RD = RD->getDefinition();
   const ASTRecordLayout &ASTLayout = Context.getASTRecordLayout(RD);
   const CGRecordLayout &Layout = CGM.getTypes().getCGRecordLayout(RD);
 
@@ -3821,8 +3819,8 @@ static void setUsedBits(CodeGenModule &CGM, const ConstantArrayType *ATy,
 // the type `QTy`.
 static void setUsedBits(CodeGenModule &CGM, QualType QTy, int Offset,
                         SmallVectorImpl<uint64_t> &Bits) {
-  if (const auto *RTy = QTy->getAs<RecordType>())
-    return setUsedBits(CGM, RTy, Offset, Bits);
+  if (const auto *RD = QTy->getAsRecordDecl())
+    return setUsedBits(CGM, RD, Offset, Bits);
 
   ASTContext &Context = CGM.getContext();
   if (const auto *ATy = Context.getAsConstantArrayType(QTy))
@@ -3865,7 +3863,7 @@ llvm::Value *CodeGenFunction::EmitCMSEClearRecord(llvm::Value *Src,
   const llvm::DataLayout &DataLayout = CGM.getDataLayout();
   int Size = DataLayout.getTypeStoreSize(ITy);
   SmallVector<uint64_t, 4> Bits(Size);
-  setUsedBits(CGM, QTy->castAs<RecordType>(), 0, Bits);
+  setUsedBits(CGM, QTy->getAsRecordDecl(), 0, Bits);
 
   int CharWidth = CGM.getContext().getCharWidth();
   uint64_t Mask =
@@ -3882,7 +3880,7 @@ llvm::Value *CodeGenFunction::EmitCMSEClearRecord(llvm::Value *Src,
   const llvm::DataLayout &DataLayout = CGM.getDataLayout();
   int Size = DataLayout.getTypeStoreSize(ATy);
   SmallVector<uint64_t, 16> Bits(Size);
-  setUsedBits(CGM, QTy->castAs<RecordType>(), 0, Bits);
+  setUsedBits(CGM, QTy->getAsRecordDecl(), 0, Bits);
 
   // Clear each element of the LLVM array.
   int CharWidth = CGM.getContext().getCharWidth();
@@ -4088,7 +4086,7 @@ void CodeGenFunction::EmitFunctionEpilog(const CGFunctionInfo &FI,
       // sensitive information.
       // Small struct/union types are passed as integers.
       auto *ITy = dyn_cast<llvm::IntegerType>(RV->getType());
-      if (ITy != nullptr && isa<RecordType>(RetTy.getCanonicalType()))
+      if (ITy != nullptr && RetTy.getCanonicalType()->getAsRecordDecl())
         RV = EmitCMSEClearRecord(RV, ITy, RetTy);
     }
     EmitReturnValueCheck(RV);
@@ -4224,7 +4222,7 @@ void CodeGenFunction::EmitDelegateCallArg(CallArgList &args,
 
   // Deactivate the cleanup for the callee-destructed param that was pushed.
   if (type->isRecordType() && !CurFuncIsThunk &&
-      type->castAs<RecordType>()->getDecl()->isParamDestroyedInCallee() &&
+      type->getAsRecordDecl()->isParamDestroyedInCallee() &&
       param->needsDestruction(getContext())) {
     EHScopeStack::stable_iterator cleanup =
         CalleeDestructedParamCleanups.lookup(cast<ParmVarDecl>(param));
@@ -4821,7 +4819,7 @@ void CodeGenFunction::EmitCallArg(CallArgList &args, const Expr *E,
   // However, we still have to push an EH-only cleanup in case we unwind before
   // we make it to the call.
   if (type->isRecordType() &&
-      type->castAs<RecordType>()->getDecl()->isParamDestroyedInCallee()) {
+      type->getAsRecordDecl()->isParamDestroyedInCallee()) {
     // If we're using inalloca, use the argument memory.  Otherwise, use a
     // temporary.
     AggValueSlot Slot = args.isUsingInAlloca()
@@ -5570,7 +5568,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
           // sensitive information.
           // Small struct/union types are passed as integer arrays.
           auto *ATy = dyn_cast<llvm::ArrayType>(Load->getType());
-          if (ATy != nullptr && isa<RecordType>(I->Ty.getCanonicalType()))
+          if (ATy != nullptr && I->Ty.getCanonicalType()->getAsRecordDecl())
             Load = EmitCMSEClearRecord(Load, ATy, I->Ty);
         }
 

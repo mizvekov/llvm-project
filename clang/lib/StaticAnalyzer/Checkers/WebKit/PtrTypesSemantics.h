@@ -18,11 +18,11 @@
 namespace clang {
 class CXXBaseSpecifier;
 class CXXMethodDecl;
+class RecordDecl;
 class CXXRecordDecl;
 class Decl;
 class FunctionDecl;
 class QualType;
-class RecordType;
 class Stmt;
 class TranslationUnitDecl;
 class Type;
@@ -73,7 +73,7 @@ std::optional<bool> isUnchecked(const clang::QualType T);
 /// An inter-procedural analysis facility that detects CF types with the
 /// underlying pointer type.
 class RetainTypeChecker {
-  llvm::DenseSet<const RecordType *> CFPointees;
+  llvm::DenseSet<const RecordDecl *> CFPointees;
   llvm::DenseSet<const Type *> RecordlessTypes;
   bool IsARCEnabled{false};
 

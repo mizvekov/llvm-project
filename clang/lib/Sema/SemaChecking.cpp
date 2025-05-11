@@ -3161,8 +3161,8 @@ static bool CheckNonNullExpr(Sema &S, const Expr *Expr) {
 
   // As a special case, transparent unions initialized with zero are
   // considered null for the purposes of the nonnull attribute.
-  if (const RecordType *UT = Expr->getType()->getAsUnionType();
-      UT && UT->getDecl()->hasAttr<TransparentUnionAttr>()) {
+  if (const RecordDecl *UD = Expr->getType()->getAsUnionDecl();
+      UD && UD->hasAttr<TransparentUnionAttr>()) {
     if (const auto *CLE = dyn_cast<CompoundLiteralExpr>(Expr))
       if (const auto *ILE = dyn_cast<InitListExpr>(CLE->getInitializer()))
         Expr = ILE->getInit(0);
@@ -5019,9 +5019,9 @@ bool Sema::BuiltinVAStart(unsigned BuiltinID, CallExpr *TheCall) {
                return false;
              if (!Type->isEnumeralType())
                return true;
-             const EnumDecl *ED = Type->castAs<EnumType>()->getDecl();
-             return !(ED &&
-                      Context.typesAreCompatible(ED->getPromotionType(), Type));
+             const EnumDecl *ED = Type->getAsEnumDecl();
+             assert(ED);
+             return !Context.typesAreCompatible(ED->getPromotionType(), Type);
            }()) {
     unsigned Reason = 0;
     if (Type->isReferenceType())  Reason = 1;
@@ -7626,15 +7626,12 @@ bool DecomposePrintfHandler::HandlePrintfSpecifier(
 // Determines if the specified is a C++ class or struct containing
 // a member with the specified name and kind (e.g. a CXXMethodDecl named
 // "c_str()").
-template<typename MemberKind>
-static llvm::SmallPtrSet<MemberKind*, 1>
+template <typename MemberKind>
+static llvm::SmallPtrSet<MemberKind *, 1>
 CXXRecordMembersNamed(StringRef Name, Sema &S, QualType Ty) {
-  const RecordType *RT = Ty->getAs<RecordType>();
   llvm::SmallPtrSet<MemberKind*, 1> Results;
 
-  if (!RT)
-    return Results;
-  const CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(RT->getDecl());
+  CXXRecordDecl *RD = Ty->getAsCXXRecordDecl();
   if (!RD || !RD->getDefinition())
     return Results;
 
@@ -7644,7 +7641,7 @@ CXXRecordMembersNamed(StringRef Name, Sema &S, QualType Ty) {
 
   // We just need to include all members of the right kind turned up by the
   // filter, at this point.
-  if (S.LookupQualifiedName(R, RT->getDecl()))
+  if (S.LookupQualifiedName(R, RD))
     for (LookupResult::iterator I = R.begin(), E = R.end(); I != E; ++I) {
       NamedDecl *decl = (*I)->getUnderlyingDecl();
       if (MemberKind *FK = dyn_cast<MemberKind>(decl))
@@ -8170,9 +8167,9 @@ CheckPrintfHandler::checkFormatExpr(const analyze_printf::PrintfSpecifier &FS,
   bool IsEnum = false;
   bool IsScopedEnum = false;
   QualType IntendedTy = ExprTy;
-  if (auto EnumTy = ExprTy->getAs<EnumType>()) {
-    IntendedTy = EnumTy->getDecl()->getIntegerType();
-    if (EnumTy->isUnscopedEnumerationType()) {
+  if (auto *ED = ExprTy->getAsEnumDecl()) {
+    IntendedTy = ED->getIntegerType();
+    if (!ED->isScoped()) {
       ExprTy = IntendedTy;
       // This controls whether we're talking about the underlying type or not,
       // which we only want to do when it's an unscoped enum.
@@ -9467,7 +9464,7 @@ struct SearchNonTrivialToInitializeField
     S.DiagRuntimeBehavior(SL, E, S.PDiag(diag::note_nontrivial_field) << 1);
   }
   void visitStruct(QualType FT, SourceLocation SL) {
-    for (const FieldDecl *FD : FT->castAs<RecordType>()->getDecl()->fields())
+    for (const FieldDecl *FD : FT->getAsRecordDecl()->fields())
       visit(FD->getType(), FD->getLocation());
   }
   void visitArray(QualType::PrimitiveDefaultInitializeKind PDIK,
@@ -9512,7 +9509,7 @@ struct SearchNonTrivialToCopyField
     S.DiagRuntimeBehavior(SL, E, S.PDiag(diag::note_nontrivial_field) << 0);
   }
   void visitStruct(QualType FT, SourceLocation SL) {
-    for (const FieldDecl *FD : FT->castAs<RecordType>()->getDecl()->fields())
+    for (const FieldDecl *FD : FT->getAsRecordDecl()->fields())
       visit(FD->getType(), FD->getLocation());
   }
   void visitArray(QualType::PrimitiveCopyKind PCK, const ArrayType *AT,
@@ -9783,18 +9780,18 @@ void Sema::CheckMemaccessArguments(const CallExpr *Call,
         PDiag(diag::warn_arc_object_memaccess)
           << ArgIdx << FnName << PointeeTy
           << Call->getCallee()->getSourceRange());
-    else if (const auto *RT = PointeeTy->getAs<RecordType>()) {
+    else if (const auto *RD = PointeeTy->getAsRecordDecl()) {
 
       // FIXME: Do not consider incomplete types even though they may be
       // completed later. GCC does not diagnose such code, but we may want to
       // consider diagnosing it in the future, perhaps under a different, but
       // related, diagnostic group.
       bool NonTriviallyCopyableCXXRecord =
-          getLangOpts().CPlusPlus && !RT->isIncompleteType() &&
-          !RT->desugar().isTriviallyCopyableType(Context);
+          getLangOpts().CPlusPlus && RD->isCompleteDefinition() &&
+          !PointeeTy.isTriviallyCopyableType(Context);
 
       if ((BId == Builtin::BImemset || BId == Builtin::BIbzero) &&
-          RT->getDecl()->isNonTrivialToPrimitiveDefaultInitialize()) {
+          RD->isNonTrivialToPrimitiveDefaultInitialize()) {
         DiagRuntimeBehavior(Dest->getExprLoc(), Dest,
                             PDiag(diag::warn_cstruct_memaccess)
                                 << ArgIdx << FnName << PointeeTy << 0);
@@ -9807,7 +9804,7 @@ void Sema::CheckMemaccessArguments(const CallExpr *Call,
                             PDiag(diag::warn_cxxstruct_memaccess)
                                 << FnName << PointeeTy);
       } else if ((BId == Builtin::BImemcpy || BId == Builtin::BImemmove) &&
-                 RT->getDecl()->isNonTrivialToPrimitiveCopy()) {
+                 RD->isNonTrivialToPrimitiveCopy()) {
         DiagRuntimeBehavior(Dest->getExprLoc(), Dest,
                             PDiag(diag::warn_cstruct_memaccess)
                                 << ArgIdx << FnName << PointeeTy << 1);
@@ -10312,16 +10309,15 @@ struct IntRange {
 
     if (!C.getLangOpts().CPlusPlus) {
       // For enum types in C code, use the underlying datatype.
-      if (const EnumType *ET = dyn_cast<EnumType>(T))
-        T = ET->getDecl()->getIntegerType().getDesugaredType(C).getTypePtr();
-    } else if (const EnumType *ET = dyn_cast<EnumType>(T)) {
+      if (const EnumDecl *ED = T->getAsEnumDecl())
+        T = ED->getIntegerType().getDesugaredType(C).getTypePtr();
+    } else if (const EnumDecl *Enum = T->getAsEnumDecl()) {
       // For enum types in C++, use the known bit width of the enumerators.
-      EnumDecl *Enum = ET->getDecl();
       // In C++11, enums can have a fixed underlying type. Use this type to
       // compute the range.
       if (Enum->isFixed()) {
         return IntRange(C.getIntWidth(QualType(T, 0)),
-                        !ET->isSignedIntegerOrEnumerationType());
+                        !Enum->getIntegerType()->isSignedIntegerType());
       }
 
       unsigned NumPositive = Enum->getNumPositiveBits();
@@ -10357,8 +10353,8 @@ struct IntRange {
       T = CT->getElementType().getTypePtr();
     if (const AtomicType *AT = dyn_cast<AtomicType>(T))
       T = AT->getValueType().getTypePtr();
-    if (const EnumType *ET = dyn_cast<EnumType>(T))
-      T = C.getCanonicalType(ET->getDecl()->getIntegerType()).getTypePtr();
+    if (const EnumDecl *ED = T->getAsEnumDecl())
+      T = C.getCanonicalType(ED->getIntegerType()).getTypePtr();
 
     if (const auto *EIT = dyn_cast<BitIntType>(T))
       return IntRange(EIT->getNumBits(), EIT->isUnsigned());
@@ -11332,7 +11328,8 @@ static bool AnalyzeBitFieldAssignment(Sema &S, FieldDecl *Bitfield, Expr *Init,
      return false;
 
   if (BitfieldType->isEnumeralType()) {
-    EnumDecl *BitfieldEnumDecl = BitfieldType->castAs<EnumType>()->getDecl();
+    EnumDecl *BitfieldEnumDecl = BitfieldType->getAsEnumDecl();
+    assert(BitfieldEnumDecl);
     // If the underlying enum type was not explicitly specified as an unsigned
     // type and the enum contain only positive values, MSVC++ will cause an
     // inconsistency by storing this as a signed type.
@@ -11361,15 +11358,14 @@ static bool AnalyzeBitFieldAssignment(Sema &S, FieldDecl *Bitfield, Expr *Init,
     // The RHS is not constant.  If the RHS has an enum type, make sure the
     // bitfield is wide enough to hold all the values of the enum without
     // truncation.
-    const auto *EnumTy = OriginalInit->getType()->getAs<EnumType>();
+    EnumDecl *ED = OriginalInit->getType()->getAsEnumDecl();
     const PreferredTypeAttr *PTAttr = nullptr;
-    if (!EnumTy) {
+    if (!ED) {
       PTAttr = Bitfield->getAttr<PreferredTypeAttr>();
       if (PTAttr)
-        EnumTy = PTAttr->getType()->getAs<EnumType>();
+        ED = PTAttr->getType()->getAsEnumDecl();
     }
-    if (EnumTy) {
-      EnumDecl *ED = EnumTy->getDecl();
+    if (ED) {
       bool SignedBitfield = BitfieldType->isSignedIntegerOrEnumerationType();
 
       // Enum types are implicitly signed on Windows, so check if there are any
@@ -12306,7 +12302,7 @@ void Sema::CheckImplicitConversion(Expr *E, QualType T, SourceLocation CC,
     // Fall through for non-constants to give a sign conversion warning.
   }
 
-  if ((!isa<EnumType>(Target) || !isa<EnumType>(Source)) &&
+  if ((!Target->getAsEnumDecl() || !Source->getAsEnumDecl()) &&
       ((TargetRange.NonNegative && !LikelySourceRange->NonNegative) ||
        (!TargetRange.NonNegative && LikelySourceRange->NonNegative &&
         LikelySourceRange->Width == TargetRange.Width))) {
@@ -12338,7 +12334,8 @@ void Sema::CheckImplicitConversion(Expr *E, QualType T, SourceLocation CC,
   // is valid in C but invalid in C++.
   QualType SourceType = E->getEnumCoercedType(Context);
   const BuiltinType *CoercedSourceBT = SourceType->getAs<BuiltinType>();
-  if (CoercedSourceBT && CoercedSourceBT->isInteger() && isa<EnumType>(Target))
+  if (CoercedSourceBT && CoercedSourceBT->isInteger() &&
+      Target->getAsEnumDecl())
     return DiagnoseImpCast(*this, E, T, CC, diag::warn_impcast_int_to_enum);
 
   // Diagnose conversions between different enumeration types.
@@ -12346,11 +12343,10 @@ void Sema::CheckImplicitConversion(Expr *E, QualType T, SourceLocation CC,
   // type, to give us better diagnostics.
   Source = Context.getCanonicalType(SourceType).getTypePtr();
 
-  if (const EnumType *SourceEnum = Source->getAs<EnumType>())
-    if (const EnumType *TargetEnum = Target->getAs<EnumType>())
-      if (SourceEnum->getDecl()->hasNameForLinkage() &&
-          TargetEnum->getDecl()->hasNameForLinkage() &&
-          SourceEnum != TargetEnum) {
+  if (const EnumDecl *SourceEnum = Source->getAsEnumDecl())
+    if (const EnumDecl *TargetEnum = Target->getAsEnumDecl())
+      if (SourceEnum->hasNameForLinkage() && TargetEnum->hasNameForLinkage() &&
+          !declaresSameEntity(SourceEnum, TargetEnum)) {
         if (SourceMgr.isInSystemMacro(CC))
           return;
 
@@ -15341,7 +15337,8 @@ void Sema::RefersToMemberWithReducedAlignment(
       return;
     if (ME->isArrow())
       BaseType = BaseType->getPointeeType();
-    RecordDecl *RD = BaseType->castAs<RecordType>()->getDecl();
+    RecordDecl *RD = BaseType->getAsRecordDecl();
+    assert(RD);
     if (RD->isInvalidDecl())
       return;
 

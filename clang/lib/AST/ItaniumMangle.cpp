@@ -1584,7 +1584,8 @@ void CXXNameMangler::mangleUnqualifiedName(
 
     if (const VarDecl *VD = dyn_cast<VarDecl>(ND)) {
       // We must have an anonymous union or struct declaration.
-      const RecordDecl *RD = VD->getType()->castAs<RecordType>()->getDecl();
+      const RecordDecl *RD = VD->getType()->getAsRecordDecl();
+      assert(RD);
 
       // Itanium C++ ABI 5.1.2:
       //
@@ -4710,8 +4711,8 @@ void CXXNameMangler::mangleIntegerLiteral(QualType T,
 
 void CXXNameMangler::mangleMemberExprBase(const Expr *Base, bool IsArrow) {
   // Ignore member expressions involving anonymous unions.
-  while (const auto *RT = Base->getType()->getAs<RecordType>()) {
-    if (!RT->getDecl()->isAnonymousStructOrUnion())
+  while (const auto *RD = Base->getType()->getAsRecordDecl()) {
+    if (!RD->isAnonymousStructOrUnion())
       break;
     const auto *ME = dyn_cast<MemberExpr>(Base);
     if (!ME)
@@ -6987,8 +6988,8 @@ static bool hasMangledSubstitutionQualifiers(QualType T) {
 
 bool CXXNameMangler::mangleSubstitution(QualType T) {
   if (!hasMangledSubstitutionQualifiers(T)) {
-    if (const RecordType *RT = T->getAs<RecordType>())
-      return mangleSubstitution(RT->getDecl());
+    if (const RecordDecl *RD = T->getAsRecordDecl())
+      return mangleSubstitution(RD);
   }
 
   uintptr_t TypePtr = reinterpret_cast<uintptr_t>(T.getAsOpaquePtr());
@@ -7024,12 +7025,11 @@ bool CXXNameMangler::isSpecializedAs(QualType S, llvm::StringRef Name,
   if (S.isNull())
     return false;
 
-  const RecordType *RT = S->getAs<RecordType>();
-  if (!RT)
+  const RecordDecl *RD = S->getAsRecordDecl();
+  if (!RD)
     return false;
 
-  const ClassTemplateSpecializationDecl *SD =
-    dyn_cast<ClassTemplateSpecializationDecl>(RT->getDecl());
+  const auto *SD = dyn_cast<ClassTemplateSpecializationDecl>(RD);
   if (!SD || !SD->getIdentifier()->isStr(Name))
     return false;
 
@@ -7158,8 +7158,8 @@ bool CXXNameMangler::mangleStandardSubstitution(const NamedDecl *ND) {
 
 void CXXNameMangler::addSubstitution(QualType T) {
   if (!hasMangledSubstitutionQualifiers(T)) {
-    if (const RecordType *RT = T->getAs<RecordType>()) {
-      addSubstitution(RT->getDecl());
+    if (const RecordDecl *RD = T->getAsRecordDecl()) {
+      addSubstitution(RD);
       return;
     }
   }

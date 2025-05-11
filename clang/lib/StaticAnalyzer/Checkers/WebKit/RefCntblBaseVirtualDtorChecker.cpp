@@ -124,14 +124,16 @@ public:
               if (Type->getAsCXXRecordDecl() == ClassDecl)
                 return true;
             }
-          } else if (auto *RD = dyn_cast<RecordType>(PointeeType)) {
-            if (RD->getDecl() == ClassDecl)
+          } else if (auto *RD = PointeeType->getAsRecordDecl()) {
+            // FIXME: declaresSameEntity?
+            if (RD == ClassDecl)
               return true;
           } else if (auto *ST =
                          dyn_cast<SubstTemplateTypeParmType>(PointeeType)) {
             auto Type = ST->getReplacementType();
-            if (auto *RD = dyn_cast<RecordType>(Type)) {
-              if (RD->getDecl() == ClassDecl)
+            if (auto *RD = Type->getAsRecordDecl()) {
+              // FIXME: declaresSameEntity?
+              if (RD == ClassDecl)
                 return true;
             }
           }

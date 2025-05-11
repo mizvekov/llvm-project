@@ -99,8 +99,8 @@ public:
         return false;
     }
     if (const Type *TP = Loc.getTypePtr()) {
-      if (TP->getTypeClass() == clang::Type::Record)
-        return visit(TP->getAsCXXRecordDecl(), TypeBeginLoc, TypeEndLoc);
+      if (const auto *RD = TP->getAsCXXRecordDecl())
+        return visit(RD, TypeBeginLoc, TypeEndLoc);
     }
     return true;
   }

@@ -244,8 +244,8 @@ void RetainTypeChecker::visitTypedef(const TypedefDecl *TD) {
     return;
 
   auto PointeeQT = QT->getPointeeType();
-  const RecordType *RT = PointeeQT->getAs<RecordType>();
-  if (!RT) {
+  const RecordDecl *RD = PointeeQT->getAsRecordDecl();
+  if (!RD) {
     if (TD->hasAttr<ObjCBridgeAttr>() || TD->hasAttr<ObjCBridgeMutableAttr>()) {
       if (auto *Type = TD->getTypeForDecl())
         RecordlessTypes.insert(Type);
@@ -253,10 +253,10 @@ void RetainTypeChecker::visitTypedef(const TypedefDecl *TD) {
     return;
   }
 
-  for (auto *Redecl : RT->getDecl()->getMostRecentDecl()->redecls()) {
+  for (auto *Redecl : RD->getMostRecentDecl()->redecls()) {
     if (Redecl->getAttr<ObjCBridgeAttr>() ||
         Redecl->getAttr<ObjCBridgeMutableAttr>()) {
-      CFPointees.insert(RT);
+      CFPointees.insert(RD);
       return;
     }
   }
@@ -267,8 +267,8 @@ bool RetainTypeChecker::isUnretained(const QualType QT, bool ignoreARC) {
     return true;
   auto CanonicalType = QT.getCanonicalType();
   auto PointeeType = CanonicalType->getPointeeType();
-  auto *RT = dyn_cast_or_null<RecordType>(PointeeType.getTypePtrOrNull());
-  if (!RT) {
+  auto *RD = PointeeType.isNull() ? nullptr : PointeeType->getAsRecordDecl();
+  if (!RD) {
     auto *Type = QT.getTypePtrOrNull();
     while (Type) {
       if (RecordlessTypes.contains(Type))
@@ -279,7 +279,7 @@ bool RetainTypeChecker::isUnretained(const QualType QT, bool ignoreARC) {
       Type = ET->desugar().getTypePtrOrNull();
     }
   }
-  return RT && CFPointees.contains(RT);
+  return RD && CFPointees.contains(RD);
 }
 
 std::optional<bool> isUnretained(const QualType T, bool IsARCEnabled) {
@@ -302,10 +302,7 @@ std::optional<bool> isUnretained(const QualType T, bool IsARCEnabled) {
   auto *PointeeType = Pointee.getTypePtrOrNull();
   if (!PointeeType)
     return false;
-  auto *Record = PointeeType->getAsStructureType();
-  if (!Record)
-    return false;
-  auto *Decl = Record->getDecl();
+  auto *Decl = PointeeType->getAsStructDecl();
   if (!Decl)
     return false;
   auto TypeName = Decl->getName();

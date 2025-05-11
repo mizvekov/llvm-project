@@ -1866,8 +1866,8 @@ public:
     // Visit the dtors of all members
     for (const FieldDecl *FD : RD->fields()) {
       QualType FT = FD->getType();
-      if (const auto *RT = FT->getAs<RecordType>())
-        if (const auto *ClassDecl = dyn_cast<CXXRecordDecl>(RT->getDecl()))
+      if (const auto *RD = FT->getAsRecordDecl())
+        if (const auto *ClassDecl = dyn_cast<CXXRecordDecl>(RD))
           if (ClassDecl->hasDefinition())
             if (CXXDestructorDecl *MemberDtor = ClassDecl->getDestructor())
               asImpl().visitUsedDecl(MemberDtor->getLocation(), MemberDtor);
@@ -1876,8 +1876,8 @@ public:
     // Also visit base class dtors
     for (const auto &Base : RD->bases()) {
       QualType BaseType = Base.getType();
-      if (const auto *RT = BaseType->getAs<RecordType>())
-        if (const auto *BaseDecl = dyn_cast<CXXRecordDecl>(RT->getDecl()))
+      if (const auto *RD = BaseType->getAsRecordDecl())
+        if (const auto *BaseDecl = dyn_cast<CXXRecordDecl>(RD))
           if (BaseDecl->hasDefinition())
             if (CXXDestructorDecl *BaseDtor = BaseDecl->getDestructor())
               asImpl().visitUsedDecl(BaseDtor->getLocation(), BaseDtor);
@@ -1891,8 +1891,8 @@ public:
         if (VD->isThisDeclarationADefinition() &&
             VD->needsDestruction(S.Context)) {
           QualType VT = VD->getType();
-          if (const auto *RT = VT->getAs<RecordType>())
-            if (const auto *ClassDecl = dyn_cast<CXXRecordDecl>(RT->getDecl()))
+          if (const auto *RD = VT->getAsRecordDecl())
+            if (const auto *ClassDecl = dyn_cast<CXXRecordDecl>(RD))
               if (ClassDecl->hasDefinition())
                 if (CXXDestructorDecl *Dtor = ClassDecl->getDestructor())
                   asImpl().visitUsedDecl(Dtor->getLocation(), Dtor);

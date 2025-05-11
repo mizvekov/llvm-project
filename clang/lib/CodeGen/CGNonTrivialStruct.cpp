@@ -39,7 +39,7 @@ template <class Derived> struct StructVisitor {
 
   template <class... Ts>
   void visitStructFields(QualType QT, CharUnits CurStructOffset, Ts... Args) {
-    const RecordDecl *RD = QT->castAs<RecordType>()->getDecl();
+    const RecordDecl *RD = QT->getAsRecordDecl();
 
     // Iterate over the fields of the struct.
     for (const FieldDecl *FD : RD->fields()) {
@@ -464,7 +464,7 @@ template <class Derived> struct GenFuncBase {
 
       if (WrongType) {
         std::string FuncName = std::string(F->getName());
-        SourceLocation Loc = QT->castAs<RecordType>()->getDecl()->getLocation();
+        SourceLocation Loc = QT->getAsRecordDecl()->getLocation();
         CGM.Error(Loc, "special function " + FuncName +
                            " for non-trivial C struct has incorrect type");
         return nullptr;
@@ -671,7 +671,7 @@ struct GenDefaultInitialize
     CharUnits Size = Ctx.getTypeSizeInChars(QualType(AT, 0));
     QualType EltTy = Ctx.getBaseElementType(QualType(AT, 0));
 
-    if (Size < CharUnits::fromQuantity(16) || EltTy->getAs<RecordType>()) {
+    if (Size < CharUnits::fromQuantity(16) || EltTy->getAsRecordDecl()) {
       GenFuncBaseTy::visitArray(FK, AT, IsVolatile, FD, CurStructOffset, Addrs);
       return;
     }

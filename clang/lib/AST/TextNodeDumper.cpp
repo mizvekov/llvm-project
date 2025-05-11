@@ -1401,8 +1401,8 @@ static void dumpBasePath(raw_ostream &OS, const CastExpr *Node) {
     if (!First)
       OS << " -> ";
 
-    const auto *RD =
-        cast<CXXRecordDecl>(Base->getType()->castAs<RecordType>()->getDecl());
+    const auto *RD = Base->getType()->getAsCXXRecordDecl();
+    assert(RD);
 
     if (Base->isVirtual())
       OS << "virtual ";

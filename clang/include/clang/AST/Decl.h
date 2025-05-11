@@ -3853,6 +3853,10 @@ public:
   bool isUnion() const { return getTagKind() == TagTypeKind::Union; }
   bool isEnum() const { return getTagKind() == TagTypeKind::Enum; }
 
+  bool isStructureOrClass() const {
+    return isStruct() || isClass() || isInterface();
+  }
+
   /// Is this tag type named, either directly or via being defined in
   /// a typedef of this type?
   ///
@@ -4466,6 +4470,10 @@ public:
   /// be turned on with an attribute, pragma, or -mms-bitfields
   /// commandline option.
   bool isMsStruct(const ASTContext &C) const;
+
+  /// Recursively check all fields in the record for const-ness. If any field
+  /// is declared const, return true. Otherwise, return false.
+  bool hasConstFields() const;
 
   /// Whether we are allowed to insert extra padding between fields.
   /// These padding are added to help AddressSanitizer detect

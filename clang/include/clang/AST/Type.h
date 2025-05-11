@@ -2801,9 +2801,9 @@ public:
   // Type Checking Functions: Check to see if this type is structurally the
   // specified type, ignoring typedefs and qualifiers, and return a pointer to
   // the best type we can.
-  const RecordType *getAsStructureType() const;
+  RecordDecl *getAsStructDecl() const;
   /// NOTE: getAs*ArrayType are methods on ASTContext.
-  const RecordType *getAsUnionType() const;
+  RecordDecl *getAsUnionDecl() const;
   const ComplexType *getAsComplexIntegerType() const; // GCC complex int type.
   const ObjCObjectType *getAsObjCInterfaceType() const;
 
@@ -2821,6 +2821,9 @@ public:
 
   /// Retrieves the RecordDecl this type refers to.
   RecordDecl *getAsRecordDecl() const;
+
+  /// Retrieves the EnumDecl this type refers to.
+  EnumDecl *getAsEnumDecl() const;
 
   /// Retrieves the TagDecl that this type refers to, either
   /// because the type is a TagType or because it is the injected-class-name
@@ -6124,10 +6127,6 @@ public:
     return reinterpret_cast<RecordDecl*>(TagType::getDecl());
   }
 
-  /// Recursively check all fields in the record for const-ness. If any field
-  /// is declared const, return true. Otherwise, return false.
-  bool hasConstFields() const;
-
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 
@@ -8576,11 +8575,10 @@ inline bool Type::isIntegerType() const {
   if (const auto *BT = dyn_cast<BuiltinType>(CanonicalType))
     return BT->getKind() >= BuiltinType::Bool &&
            BT->getKind() <= BuiltinType::Int128;
-  if (const EnumType *ET = dyn_cast<EnumType>(CanonicalType)) {
+  if (EnumDecl *ED = CanonicalType->getAsEnumDecl()) {
     // Incomplete enum types are not treated as integer types.
     // FIXME: In C++, enum types are never integer types.
-    return IsEnumDeclComplete(ET->getDecl()) &&
-      !IsEnumDeclScoped(ET->getDecl());
+    return IsEnumDeclComplete(ED) && !IsEnumDeclScoped(ED);
   }
   return isBitIntType();
 }
@@ -8635,10 +8633,10 @@ inline bool Type::isScalarType() const {
   if (const auto *BT = dyn_cast<BuiltinType>(CanonicalType))
     return BT->getKind() > BuiltinType::Void &&
            BT->getKind() <= BuiltinType::NullPtr;
-  if (const EnumType *ET = dyn_cast<EnumType>(CanonicalType))
+  if (EnumDecl *ED = CanonicalType->getAsEnumDecl())
     // Enums are scalar types, but only if they are defined.  Incomplete enums
     // are not treated as scalar types.
-    return IsEnumDeclComplete(ET->getDecl());
+    return IsEnumDeclComplete(ED);
   return isa<PointerType>(CanonicalType) ||
          isa<BlockPointerType>(CanonicalType) ||
          isa<MemberPointerType>(CanonicalType) ||
@@ -8654,8 +8652,8 @@ inline bool Type::isIntegralOrEnumerationType() const {
 
   // Check for a complete enum type; incomplete enum types are not properly an
   // enumeration type in the sense required here.
-  if (const auto *ET = dyn_cast<EnumType>(CanonicalType))
-    return IsEnumDeclComplete(ET->getDecl());
+  if (auto *ED = CanonicalType->getAsEnumDecl())
+    return IsEnumDeclComplete(ED);
 
   return isBitIntType();
 }

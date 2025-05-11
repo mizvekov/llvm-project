@@ -1554,8 +1554,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
                      ReturnValue.getElementType(), ReturnValue.getAlignment());
       ;
 
-      if (const RecordType *RecordTy = Ty->getAs<RecordType>()) {
-        const auto *RD = RecordTy->getDecl();
+      if (const RecordDecl *RD = Ty->getAsRecordDecl()) {
         const auto *CXXRD = dyn_cast<CXXRecordDecl>(RD);
         if ((CXXRD && !CXXRD->hasTrivialDestructor()) ||
             RD->isNonTrivialToPrimitiveDestroy()) {
@@ -2714,7 +2713,7 @@ void CodeGenFunction::EmitParmDecl(const VarDecl &D, ParamValue Arg,
     // Don't push a cleanup in a thunk for a method that will also emit a
     // cleanup.
     if (Ty->isRecordType() && !CurFuncIsThunk &&
-        Ty->castAs<RecordType>()->getDecl()->isParamDestroyedInCallee()) {
+        Ty->getAsRecordDecl()->isParamDestroyedInCallee()) {
       if (QualType::DestructionKind DtorKind =
               D.needsDestruction(getContext())) {
         assert((DtorKind == QualType::DK_cxx_destructor ||

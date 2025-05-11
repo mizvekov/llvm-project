@@ -18539,13 +18539,13 @@ buildDeclareReductionRef(Sema &SemaRef, SourceLocation Loc, SourceRange Range,
   //        the set of member candidates is empty.
   LookupResult Lookup(SemaRef, ReductionId, Sema::LookupOMPReductionName);
   Lookup.suppressDiagnostics();
-  if (const auto *TyRec = Ty->getAs<RecordType>()) {
+  if (auto *Rec = Ty->getAsRecordDecl()) {
     // Complete the type if it can be completed.
     // If the type is neither complete nor being defined, bail out now.
-    if (SemaRef.isCompleteType(Loc, Ty) || TyRec->isBeingDefined() ||
-        TyRec->getDecl()->getDefinition()) {
+    if (SemaRef.isCompleteType(Loc, Ty) || Rec->isBeingDefined() ||
+        Rec->getDefinition()) {
       Lookup.clear();
-      SemaRef.LookupQualifiedName(Lookup, TyRec->getDecl());
+      SemaRef.LookupQualifiedName(Lookup, Rec);
       if (Lookup.empty()) {
         Lookups.emplace_back();
         Lookups.back().append(Lookup.begin(), Lookup.end());
