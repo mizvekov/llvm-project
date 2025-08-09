@@ -1658,7 +1658,9 @@ namespace {
       if (const auto *ICNT = dyn_cast<InjectedClassNameType>(TL.getTypePtr());
           ICNT && SemaRef.CodeSynthesisContexts.back().Kind ==
                       Sema::CodeSynthesisContext::BuildingDeductionGuides) {
-        Type = inherited::TransformType(ICNT->getCanonicalInjectedTST());
+        Type = inherited::TransformType(
+            ICNT->getOriginalDecl()->getCanonicalTemplateSpecializationType(
+                SemaRef.Context));
         TLB.pushTrivial(SemaRef.Context, Type, TL.getNameLoc());
       }
       return Type;

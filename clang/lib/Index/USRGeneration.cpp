@@ -911,7 +911,8 @@ void USRGenerator::VisitType(QualType T) {
     }
     if (const TagType *TT = T->getAs<TagType>()) {
       if (const auto *ICNT = dyn_cast<InjectedClassNameType>(TT)) {
-        T = ICNT->getCanonicalInjectedTST();
+        T = ICNT->getOriginalDecl()->getCanonicalTemplateSpecializationType(
+            Ctx);
       } else {
         Out << '$';
         VisitTagDecl(TT->getOriginalDecl());

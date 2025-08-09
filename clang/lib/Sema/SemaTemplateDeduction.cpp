@@ -5594,7 +5594,8 @@ static TemplateDeductionResult CheckDeductionConsistency(
   bool IsDeductionGuide = isa<CXXDeductionGuideDecl>(FTD->getTemplatedDecl());
   if (IsDeductionGuide) {
     if (auto *Injected = P->getAs<InjectedClassNameType>())
-      P = Injected->getCanonicalInjectedTST();
+      P = Injected->getOriginalDecl()->getCanonicalTemplateSpecializationType(
+          S.Context);
   }
   QualType InstP = S.SubstType(P.getCanonicalType(), MLTAL, FTD->getLocation(),
                                FTD->getDeclName(), &IsIncompleteSubstitution);
@@ -5614,9 +5615,11 @@ static TemplateDeductionResult CheckDeductionConsistency(
   auto T2 = S.Context.getUnqualifiedArrayType(A.getNonReferenceType());
   if (IsDeductionGuide) {
     if (auto *Injected = T1->getAs<InjectedClassNameType>())
-      T1 = Injected->getCanonicalInjectedTST();
+      T1 = Injected->getOriginalDecl()->getCanonicalTemplateSpecializationType(
+          S.Context);
     if (auto *Injected = T2->getAs<InjectedClassNameType>())
-      T2 = Injected->getCanonicalInjectedTST();
+      T2 = Injected->getOriginalDecl()->getCanonicalTemplateSpecializationType(
+          S.Context);
   }
   if (!S.Context.hasSameType(T1, T2))
     return TemplateDeductionResult::NonDeducedMismatch;
@@ -6974,7 +6977,9 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   }
 
   case Type::InjectedClassName:
-    T = cast<InjectedClassNameType>(T)->getCanonicalInjectedTST();
+    T = cast<InjectedClassNameType>(T)
+            ->getOriginalDecl()
+            ->getCanonicalTemplateSpecializationType(Ctx);
     [[fallthrough]];
 
   case Type::TemplateSpecialization: {

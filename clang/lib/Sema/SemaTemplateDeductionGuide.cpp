@@ -1058,8 +1058,9 @@ BuildDeductionGuideForTypeAlias(Sema &SemaRef,
       RType->getAs<TemplateSpecializationType>();
   if (const auto *ICNT = RType->getAs<InjectedClassNameType>())
     // implicitly-generated deduction guide.
-    FReturnType =
-        cast<TemplateSpecializationType>(ICNT->getCanonicalInjectedTST());
+    FReturnType = cast<TemplateSpecializationType>(
+        ICNT->getOriginalDecl()->getCanonicalTemplateSpecializationType(
+            SemaRef.Context));
   assert(FReturnType && "expected to see a return type");
   // Deduce template arguments of the deduction guide f from the RHS of
   // the alias.

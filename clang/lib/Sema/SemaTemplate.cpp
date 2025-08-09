@@ -3787,7 +3787,7 @@ QualType Sema::CheckTemplateIdType(ElaboratedTypeKeyword Keyword,
         // injected type is equal to the type we just built.
         CanQualType ICNT = Context.getCanonicalTagType(Record);
         CanQualType Injected =
-            cast<InjectedClassNameType>(ICNT)->getCanonicalInjectedTST();
+            Record->getCanonicalTemplateSpecializationType(Context);
 
         if (CanonType != Injected)
           continue;
