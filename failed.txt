@@ -1,0 +1,2 @@
+Failed Tests (1):
+  Clang :: SemaTemplate/temp_arg_nontype_cxx2c.cpp
