@@ -493,6 +493,10 @@ struct TemplateArgumentLocInfo {
   TemplateArgumentLocInfo(TypeSourceInfo *Declarator) { Pointer = Declarator; }
 
   TemplateArgumentLocInfo(Expr *E) { Pointer = E; }
+
+  // For trivial source locations for converted template argument kinds.
+  TemplateArgumentLocInfo(ASTContext &Ctx, SourceLocation Loc);
+
   // Ctx is used for allocation -- this case is unusually large and also rare,
   // so we store the payload out-of-line.
   TemplateArgumentLocInfo(ASTContext &Ctx, SourceLocation TemplateKwLoc,
@@ -518,8 +522,17 @@ struct TemplateArgumentLocInfo {
     return getTemplate()->EllipsisLoc;
   }
 
+  bool isNull() const { return Pointer.isNull(); }
+
+  bool isTrivial() const { return isa<SourceLocation *>(Pointer); }
+  SourceLocation getTrivialLoc() const {
+    assert(isTrivial());
+    return *cast<SourceLocation *>(Pointer);
+  }
+
 private:
-  llvm::PointerUnion<TemplateTemplateArgLocInfo *, Expr *, TypeSourceInfo *>
+  llvm::PointerUnion<TemplateTemplateArgLocInfo *, Expr *, TypeSourceInfo *,
+                     SourceLocation *>
       Pointer;
 };
 
@@ -534,16 +547,43 @@ public:
 
   TemplateArgumentLoc(const TemplateArgument &Argument,
                       TemplateArgumentLocInfo Opaque)
-      : Argument(Argument), LocInfo(Opaque) {}
+      : Argument(Argument), LocInfo(Opaque) {
+    switch (Argument.getKind()) {
+    case TemplateArgument::Null:
+      assert(Opaque.isNull());
+      return;
+    case TemplateArgument::Pack:
+      assert(Opaque.isTrivial());
+      return;
+    case TemplateArgument::NullPtr:
+    case TemplateArgument::Integral:
+    case TemplateArgument::Declaration:
+    case TemplateArgument::StructuralValue:
+      assert(Opaque.isTrivial() || Opaque.getAsExpr() != nullptr);
+      return;
+    case TemplateArgument::Expression:
+      assert(Opaque.getAsExpr() != nullptr);
+      return;
+    case TemplateArgument::Type:
+      assert(Opaque.getAsTypeSourceInfo() != nullptr);
+      return;
+    case TemplateArgument::Template:
+    case TemplateArgument::TemplateExpansion:
+      assert(Opaque.getTemplate() != nullptr);
+      return;
+    }
+    llvm_unreachable("Unknown TemplateArgument kind");
+  }
 
   TemplateArgumentLoc(const TemplateArgument &Argument, TypeSourceInfo *TInfo)
       : Argument(Argument), LocInfo(TInfo) {
     assert(Argument.getKind() == TemplateArgument::Type);
+    assert(TInfo != nullptr);
   }
 
   TemplateArgumentLoc(const TemplateArgument &Argument, Expr *E)
       : Argument(Argument), LocInfo(E) {
-
+    assert(E != nullptr);
     // Permit any kind of template argument that can be represented with an
     // expression.
     assert(Argument.getKind() == TemplateArgument::NullPtr ||
