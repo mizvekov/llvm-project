@@ -2147,8 +2147,9 @@ private:
       ASTContext &C, FunctionTemplateDecl *Template,
       TemplateArgumentList *TemplateArgs, void *InsertPos,
       TemplateSpecializationKind TSK,
+      const TemplateParameterList *TemplateParams,
       const TemplateArgumentListInfo *TemplateArgsAsWritten,
-      SourceLocation PointOfInstantiation);
+      SourceLocation PointOfInstantiation, bool AddSpecialization);
 
   /// Specify that this record is an instantiation of the
   /// member function FD.
@@ -3085,6 +3086,9 @@ public:
   ///
   /// \param TSK the kind of template specialization this is.
   ///
+  /// \param TemplateParams the template parameters if this is an explicit
+  /// specialization.
+  ///
   /// \param TemplateArgsAsWritten location info of template arguments.
   ///
   /// \param PointOfInstantiation point at which the function template
@@ -3093,17 +3097,20 @@ public:
       FunctionTemplateDecl *Template, TemplateArgumentList *TemplateArgs,
       void *InsertPos,
       TemplateSpecializationKind TSK = TSK_ImplicitInstantiation,
+      const TemplateParameterList *TemplateParams = nullptr,
       TemplateArgumentListInfo *TemplateArgsAsWritten = nullptr,
-      SourceLocation PointOfInstantiation = SourceLocation()) {
-    setFunctionTemplateSpecialization(getASTContext(), Template, TemplateArgs,
-                                      InsertPos, TSK, TemplateArgsAsWritten,
-                                      PointOfInstantiation);
+      SourceLocation PointOfInstantiation = SourceLocation(),
+      bool AddSpecialization = true) {
+    setFunctionTemplateSpecialization(
+        getASTContext(), Template, TemplateArgs, InsertPos, TSK, TemplateParams,
+        TemplateArgsAsWritten, PointOfInstantiation, AddSpecialization);
   }
 
   /// Specifies that this function declaration is actually a
   /// dependent function template specialization.
   void setDependentTemplateSpecialization(
       ASTContext &Context, const UnresolvedSetImpl &Templates,
+      const TemplateParameterList *TemplateParams,
       const TemplateArgumentListInfo *TemplateArgs);
 
   DependentFunctionTemplateSpecializationInfo *

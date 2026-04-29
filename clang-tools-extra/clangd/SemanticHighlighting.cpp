@@ -590,28 +590,28 @@ public:
 
   bool
   VisitClassTemplateSpecializationDecl(ClassTemplateSpecializationDecl *D) {
-    if (auto *Args = D->getTemplateArgsAsWritten())
-      H.addAngleBracketTokens(Args->getLAngleLoc(), Args->getRAngleLoc());
-    return true;
-  }
-
-  bool VisitClassTemplatePartialSpecializationDecl(
-      ClassTemplatePartialSpecializationDecl *D) {
-    if (auto *TPL = D->getTemplateParameters())
-      H.addAngleBracketTokens(TPL->getLAngleLoc(), TPL->getRAngleLoc());
+    if (const auto *Info = D->getExplicitInstantiationInfo()) {
+      H.addAngleBracketTokens(Info->TemplateArgsAsWritten->getLAngleLoc(),
+                              Info->TemplateArgsAsWritten->getRAngleLoc());
+    } else if (const auto *Info = D->getExplicitSpecializationInfo()) {
+      H.addAngleBracketTokens(Info->TemplateParams->getLAngleLoc(),
+                              Info->TemplateParams->getRAngleLoc());
+      H.addAngleBracketTokens(Info->TemplateArgsAsWritten->getLAngleLoc(),
+                              Info->TemplateArgsAsWritten->getRAngleLoc());
+    }
     return true;
   }
 
   bool VisitVarTemplateSpecializationDecl(VarTemplateSpecializationDecl *D) {
-    if (auto *Args = D->getTemplateArgsAsWritten())
-      H.addAngleBracketTokens(Args->getLAngleLoc(), Args->getRAngleLoc());
-    return true;
-  }
-
-  bool VisitVarTemplatePartialSpecializationDecl(
-      VarTemplatePartialSpecializationDecl *D) {
-    if (auto *TPL = D->getTemplateParameters())
-      H.addAngleBracketTokens(TPL->getLAngleLoc(), TPL->getRAngleLoc());
+    if (const auto *Info = D->getExplicitInstantiationInfo()) {
+      H.addAngleBracketTokens(Info->TemplateArgsAsWritten->getLAngleLoc(),
+                              Info->TemplateArgsAsWritten->getRAngleLoc());
+    } else if (const auto *Info = D->getExplicitSpecializationInfo()) {
+      H.addAngleBracketTokens(Info->TemplateParams->getLAngleLoc(),
+                              Info->TemplateParams->getRAngleLoc());
+      H.addAngleBracketTokens(Info->TemplateArgsAsWritten->getLAngleLoc(),
+                              Info->TemplateArgsAsWritten->getRAngleLoc());
+    }
     return true;
   }
 

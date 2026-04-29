@@ -1042,6 +1042,9 @@ void clang::TextNodeDumper::dumpTemplateSpecializationKind(
   case TSK_ImplicitInstantiation:
     OS << " implicit_instantiation";
     break;
+  case TSK_FriendDeclaration:
+    OS << " friend_declaration";
+    break;
   case TSK_ExplicitSpecialization:
     OS << " explicit_specialization";
     break;
